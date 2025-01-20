@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:audiotags/audiotags.dart';
+import 'package:music_app/constants.dart';
 import 'package:music_app/models/song.dart';
 
 class FileHelper {
@@ -54,8 +55,6 @@ class FileHelper {
         favorite: false);
     try {
       Tag? tag = await AudioTags.read(file.path);
-
-      String undefinedTag = "<UNDEFINED>";
 
       String? title = tag?.title ?? undefinedTag;
       String? artist = tag?.trackArtist ?? undefinedTag;

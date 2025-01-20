@@ -19,13 +19,13 @@ class _SettingsPageState extends State<SettingsPage> {
 
   List<String> orderOptions = [
     orderAlphabetically,
-    orderChronolically,
-    orderReverseChronolically
+    orderChronologically,
+    orderReverseChronologically
   ];
 
   List<String> orderOptionsYear = [
-    orderChronolically,
-    orderReverseChronolically
+    orderChronologically,
+    orderReverseChronologically
   ];
 
   @override
@@ -227,8 +227,7 @@ class _SettingsPageState extends State<SettingsPage> {
           bottomNavigationBar:
               Consumer<MusicProvider>(builder: (context, value, child) {
             return Visibility(
-              visible:
-                  value.currentQueueIndex != -1 && value.fullQueue.isNotEmpty,
+              visible: value.currentQueueIndex != -1 && value.queue.isNotEmpty,
               child: BottomAppBar(
                 color: Theme.of(context).colorScheme.primary,
                 shape: CircularNotchedRectangle(), // Optional for FAB notch

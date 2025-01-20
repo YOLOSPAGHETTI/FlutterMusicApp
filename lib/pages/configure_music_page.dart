@@ -490,8 +490,7 @@ class _ConfigureMusicPageState extends State<ConfigureMusicPage> {
                             color: Theme.of(context).colorScheme.secondary))),
               ]))),
           bottomNavigationBar: Visibility(
-            visible:
-                value.currentQueueIndex != -1 && value.fullQueue.isNotEmpty,
+            visible: value.currentQueueIndex != -1 && value.queue.isNotEmpty,
             child: BottomAppBar(
               color: Theme.of(context).colorScheme.primary,
               shape: CircularNotchedRectangle(), // Optional for FAB notch

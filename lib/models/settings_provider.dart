@@ -21,9 +21,9 @@ class SettingsProvider extends ChangeNotifier {
   bool _ignoreA = true; // implemented
   bool _viewArtistWithAlbum = true;
   bool _viewYearWithAlbum = true;
-  String _songOrderType = orderChronolically;
-  String _albumOrderType = orderChronolically;
-  String _yearOrderType = orderChronolically;
+  String _songOrderType = orderChronologically;
+  String _albumOrderType = orderChronologically;
+  String _yearOrderType = orderChronologically;
 
   ThemeData get themeData => _themeData;
 

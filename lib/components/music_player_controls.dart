@@ -22,9 +22,10 @@ class MusicPlayerControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Queue<Song> queue = musicProvider.fullQueue;
-    final Song currentSong = queue.elementAt(musicProvider.currentQueueIndex);
-    print("CurrentSong: " + currentSong.title);
+    final List<int> queue = musicProvider.queue;
+    final int currentSongId = queue[musicProvider.currentQueueIndex];
+    final Song currentSong = musicProvider.getSongFromId(currentSongId);
+    //print("CurrentSong: " + currentSong.title);
 
     return Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
       GestureDetector(

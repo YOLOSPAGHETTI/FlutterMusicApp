@@ -2,6 +2,9 @@
 final double listTileHeight = 70;
 final double listFieldHeight = 70;
 
+// Data
+const String undefinedTag = "<UNDEFINED>";
+
 // Sidebars
 const List<String> alphabet = [
   '#',
@@ -57,12 +60,23 @@ const List<String> containers = [parentheses, brackets, curlyBraces];
 // Sort Fields
 const List<String> sortFields = [
   "",
-  columnArtist,
-  columnAlbum,
-  columnGenre,
-  columnYear,
-  columnModifiedDate
+  sortArtists,
+  sortAlbums,
+  sortGenres,
+  sortYears,
+  sortDecades,
+  sortDateAdded,
+  sortPlaylists
 ];
+
+const Map<String, String> sortToColumn = {
+  sortArtists: columnArtist,
+  sortAlbums: columnAlbum,
+  sortGenres: columnGenre,
+  sortYears: columnYear,
+  sortDateAdded: columnModifiedDate,
+  sortPlaylists: columnName
+};
 
 // Settings
 const String settingHideSongsWithEmptyTitle = "hideSongsWithEmptyTitle";
@@ -80,8 +94,21 @@ const String settingYearSortOrder = "yearSortOrder";
 
 // Order Types
 const String orderAlphabetically = "Alphabetically";
-const String orderChronolically = "Chronologically";
-const String orderReverseChronolically = "Reverse Chronologically";
+const String orderChronologically = "Chronologically";
+const String orderReverseChronologically = "Reverse Chronologically";
+
+const quickSortMinimumLimit = 5;
+
+// Sort
+const String sortSongs = "Songs";
+const String sortArtists = "Artists";
+const String sortAlbums = "Albums";
+const String sortGenres = "Genres";
+const String sortYears = "Years";
+const String sortDecades = "Decades";
+const String sortDateAdded = "Date Added";
+const String sortFavorites = "Favorites";
+const String sortPlaylists = "Playlists";
 
 // DB
 // Table and column names

@@ -43,45 +43,51 @@ class MusicPlayerDrawer extends StatelessWidget {
                         RoundedRectangleBorder(borderRadius: BorderRadius.zero),
                     children: [
                       ListTile(
-                          title: Text("Songs"),
+                          title: Text(sortSongs),
                           onTap: () {
-                            musicProvider.setSortSingle(tableSongs);
+                            musicProvider.setSortSingle(sortSongs);
                             return Navigator.pop(context);
                           }),
                       ListTile(
-                          title: Text("Artists"),
+                          title: Text(sortArtists),
                           onTap: () {
-                            musicProvider.setSortSingle(columnArtist);
+                            musicProvider.setSortSingle(sortArtists);
                             return Navigator.pop(context);
                           }),
                       ListTile(
-                          title: Text("Albums"),
+                          title: Text(sortAlbums),
                           onTap: () {
-                            musicProvider.setSortSingle(columnAlbum);
+                            musicProvider.setSortSingle(sortAlbums);
                             return Navigator.pop(context);
                           }),
                       ListTile(
-                          title: Text("Genres"),
+                          title: Text(sortGenres),
                           onTap: () {
-                            musicProvider.setSortSingle(columnGenre);
+                            musicProvider.setSortSingle(sortGenres);
                             return Navigator.pop(context);
                           }),
                       ListTile(
-                          title: Text("Years"),
+                          title: Text(sortYears),
                           onTap: () {
-                            musicProvider.setSortSingle(columnYear);
+                            musicProvider.setSortSingle(sortYears);
                             return Navigator.pop(context);
                           }),
                       ListTile(
-                          title: Text("Date Added"),
+                          title: Text(sortDecades),
                           onTap: () {
-                            musicProvider.setSortSingle(columnModifiedDate);
+                            musicProvider.setSortSingle(sortDecades);
                             return Navigator.pop(context);
                           }),
                       ListTile(
-                          title: Text("Favorites"),
+                          title: Text(sortDateAdded),
                           onTap: () {
-                            musicProvider.setSortSingle(columnFavorite);
+                            musicProvider.setSortSingle(sortDateAdded);
+                            return Navigator.pop(context);
+                          }),
+                      ListTile(
+                          title: Text(sortFavorites),
+                          onTap: () {
+                            musicProvider.setSortSingle(sortFavorites);
                             return Navigator.pop(context);
                           }),
                     ],
@@ -103,7 +109,7 @@ class MusicPlayerDrawer extends StatelessWidget {
                     color: Colors.grey[500],
                   ),
                   ListTile(
-                      title: Text("Playlists"),
+                      title: Text(tablePlaylists),
                       contentPadding: const EdgeInsets.only(left: 25.0),
                       onTap: () {
                         musicProvider.setSortSingle(tablePlaylists);

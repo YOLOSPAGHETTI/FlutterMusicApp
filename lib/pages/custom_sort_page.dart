@@ -13,33 +13,34 @@ class CustomSortPage extends StatefulWidget {
 }
 
 class _CustomSortPageState extends State<CustomSortPage> {
-  List<String> sortOrder = <String>[];
-  List<TextEditingController> searchControllers = <TextEditingController>[];
+  List<String> sortOrder = List<String>.filled(6, "");
+  List<TextEditingController> searchControllers =
+      List<TextEditingController>.filled(7, TextEditingController());
   String errorMessage = "";
-
-  @override
-  void initState() {
-    super.initState();
-    for (int i = 0; i < 5; i++) {
-      sortOrder.add("");
-      searchControllers.add(TextEditingController());
-    }
-    searchControllers.add(TextEditingController());
-  }
+  final String duplicateErrorMessage = "Cannot have duplicate sort fields.";
+  final String yearDuplicateErrorMessage =
+      "Cannot have both years and decades in sorting.";
 
   void goToHomePage(MusicProvider musicProvider) {
+    checkForYearsAndDecades();
+    checkForDuplicates();
+
     if (errorMessage.isEmpty) {
+      List<String> tempSortOrder = <String>[];
       Map<String, String> searchStrings = {};
 
-      for (int i = 0; i < 5; i++) {
+      for (int i = 0; i < 6; i++) {
         String sortString = sortOrder[i];
         if (sortString.isNotEmpty) {
+          tempSortOrder.add(sortString);
           searchStrings[sortString] = searchControllers[i].text;
         }
       }
-      searchStrings[tableSongs] = searchControllers[5].text;
+      tempSortOrder.add(tableSongs);
+      searchStrings[tableSongs] = searchControllers[6].text;
 
-      musicProvider.setSort(sortOrder, searchStrings);
+      //print("goToHomePage::sortOrder: $sortOrder");
+      musicProvider.setSort(tempSortOrder, searchStrings);
 
       Navigator.push(context, MaterialPageRoute(builder: (context) {
         return HomePage();
@@ -51,7 +52,7 @@ class _CustomSortPageState extends State<CustomSortPage> {
     String field = sortOrder[index];
     // Make later fields empty when this one is empty
     if (field.isEmpty) {
-      for (int i = index; i < 5; i++) {
+      for (int i = index; i < 6; i++) {
         sortFields[i].isEmpty;
         searchControllers[i].text = "";
       }
@@ -62,7 +63,7 @@ class _CustomSortPageState extends State<CustomSortPage> {
     bool duplicateError = false;
     Map<String, int> fieldExists = {};
 
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
       if (sortOrder[i].isNotEmpty && fieldExists[sortOrder[i]] != null) {
         duplicateError = true;
         break;
@@ -70,10 +71,20 @@ class _CustomSortPageState extends State<CustomSortPage> {
       fieldExists[sortOrder[i]] = i;
     }
     if (duplicateError) {
-      errorMessage = "Cannot have duplicate sort fields.";
-    } else {
+      errorMessage = duplicateErrorMessage;
+    } else if (errorMessage == duplicateErrorMessage) {
       errorMessage = "";
     }
+  }
+
+  void checkForYearsAndDecades() {
+    setState(() {
+      if (sortOrder.contains(sortYears) && sortOrder.contains(sortDecades)) {
+        errorMessage = yearDuplicateErrorMessage;
+      } else if (errorMessage == yearDuplicateErrorMessage) {
+        errorMessage = "";
+      }
+    });
   }
 
   @override
@@ -288,6 +299,37 @@ class _CustomSortPageState extends State<CustomSortPage> {
                       ),
                     ),
                     const SizedBox(height: 20),
+                    Visibility(
+                      visible: sortOrder[0].isNotEmpty &&
+                          sortOrder[1].isNotEmpty &&
+                          sortOrder[2].isNotEmpty &&
+                          sortOrder[3].isNotEmpty &&
+                          sortOrder[4].isNotEmpty,
+                      child: Row(
+                        children: [
+                          Text("6: "),
+                          const SizedBox(width: 25),
+                          DropdownButton<String>(
+                              value: sortOrder[5],
+                              onChanged: (String? newValue) {
+                                setState(() {
+                                  sortFields[5] = newValue!;
+                                  checkForDuplicates();
+                                });
+                              },
+                              items: sortFields.map((String sortString) {
+                                return DropdownMenuItem<String>(
+                                    value: sortString, child: Text(sortString));
+                              }).toList()),
+                          const SizedBox(width: 25),
+                          Expanded(
+                              child: TextField(
+                            controller: searchControllers[5],
+                          ))
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 20),
                     // Songs
                     Row(
                       children: [
@@ -329,8 +371,7 @@ class _CustomSortPageState extends State<CustomSortPage> {
                 ),
               )),
           bottomNavigationBar: Visibility(
-            visible:
-                value.currentQueueIndex != -1 && value.fullQueue.isNotEmpty,
+            visible: value.currentQueueIndex != -1 && value.queue.isNotEmpty,
             child: BottomAppBar(
               color: Theme.of(context).colorScheme.primary,
               shape: CircularNotchedRectangle(), // Optional for FAB notch

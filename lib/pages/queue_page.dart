@@ -1,5 +1,3 @@
-import 'dart:collection';
-
 import 'package:flutter/material.dart';
 import 'package:music_app/constants.dart';
 import 'package:music_app/models/music_provider.dart';
@@ -17,8 +15,9 @@ class _QueuePageState extends State<QueuePage> {
   @override
   Widget build(BuildContext context) {
     return Consumer<MusicProvider>(builder: (context, value, child) {
-      final Queue<Song> queue = value.fullQueue;
-      final Song currentSong = queue.elementAt(value.currentQueueIndex);
+      final List<int> queue = value.queue;
+      final int currentSongId = queue.elementAt(value.currentQueueIndex);
+      final Song currentSong = value.getSongFromId(currentSongId);
 
       return Scaffold(
         backgroundColor: Theme.of(context).colorScheme.surface,
@@ -35,8 +34,10 @@ class _QueuePageState extends State<QueuePage> {
               return SizedBox(
                   height: listTileHeight,
                   child: ListTile(
-                    title: Text(queue.elementAt(index).title),
-                    subtitle: Text(queue.elementAt(index).artist),
+                    title:
+                        Text(value.getSongFromId(queue.elementAt(index)).title),
+                    subtitle: Text(
+                        value.getSongFromId(queue.elementAt(index)).artist),
                     /*onTap: () => value.sortString == tableSongs
                             ? goToSong(index)
                             : loadItemList(index),*/

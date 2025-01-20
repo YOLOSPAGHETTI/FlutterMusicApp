@@ -30,8 +30,9 @@ class SongPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Consumer<MusicProvider>(builder: (context, value, child) {
-      final Queue<Song> queue = value.fullQueue;
-      final Song currentSong = queue.elementAt(value.currentQueueIndex);
+      final List<int> queue = value.queue;
+      final int currentSongId = queue[value.currentQueueIndex];
+      final Song currentSong = value.getSongFromId(currentSongId);
       bool favorite = currentSong.favorite;
 
       return Scaffold(
@@ -151,7 +152,8 @@ class SongPage extends StatelessWidget {
                     inactiveColor: Colors.grey[400],
                     onChanged: (double double) {},
                     onChangeEnd: (double double) {
-                      value.seek(Duration(seconds: double.toInt()));
+                      value.audioHandler!
+                          .seek(Duration(seconds: double.toInt()));
                     },
                   ),
                   Padding(

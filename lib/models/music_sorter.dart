@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -58,7 +59,7 @@ class MusicSorter {
       if (!allSongsPopulated) {
         allSongs[id] = song;
       }
-      provider.addSong(song);
+      provider.addSong(song.id);
       //print(title);
     }
     allSongsPopulated = true;
@@ -104,7 +105,7 @@ class MusicSorter {
         columnFavorite
       ];
       List<String> selectionArgs = ["%"];
-      String orderBy = getOrderBy(tableSongs, provider.sortOrder);
+      String orderBy = getOrderBy(sortSongs, provider.sortOrder);
       List<Map<String, Object?>> results = await db.normalQuery(
           "$tableSongs AS S",
           projection,
@@ -117,7 +118,7 @@ class MusicSorter {
       Iterator<Song> iterator = allSongs.values.iterator;
       while (iterator.moveNext()) {
         Song song = iterator.current;
-        provider.addSong(song);
+        provider.addSong(song.id);
       }
     }
   }
@@ -128,33 +129,37 @@ class MusicSorter {
     Map<String, String> selectedItems = provider.selectedItems;
     List<Map<String, Object?>> results =
         await getSongResultsWithFilter(sortOrder, searchStrings, selectedItems);
+    Map<String, String> yearsToFirstItem = {};
     for (Map<String, Object?> row in results) {
       int id = row[columnId] as int;
       //String title = row[columnTitle].toString();
       //print(title);
       if (allSongs[id] != null) {
-        provider.addSong(allSongs[id]!);
+        provider.addSong(id);
+      }
+      String year = row[columnYear].toString();
+      if (year != undefinedTag && !yearsToFirstItem.containsKey(year)) {
+        yearsToFirstItem[year] = id.toString();
       }
     }
+    populateChronologicalQuickSort(provider, yearsToFirstItem);
   }
 
-  Future<List<Song>> getSongsWithFilter(
+  Future<List<int>> getSongsWithFilter(
       List<String> sortOrder,
       Map<String, String> searchStrings,
       Map<String, String> selectedItems) async {
-    List<Song> songs = <Song>[];
+    List<int> songIds = <int>[];
     List<Map<String, Object?>> results =
         await getSongResultsWithFilter(sortOrder, searchStrings, selectedItems);
     for (Map<String, Object?> row in results) {
       int id = row[columnId] as int;
       //String title = row[columnTitle].toString();
       //print(title);
-      if (allSongs[id] != null) {
-        songs.add(allSongs[id]!);
-      }
+      songIds.add(id);
     }
 
-    return songs;
+    return songIds;
   }
 
   Future<List<Map<String, Object?>>> getSongResultsWithFilter(
@@ -163,9 +168,9 @@ class MusicSorter {
       Map<String, String> selectedItems) async {
     List<String> params = buildParams(sortOrder, searchStrings, selectedItems);
     String query =
-        buildQuery(tableSongs, sortOrder, searchStrings, selectedItems);
-    //print("populateSongsWithFilter::query: $query");
-    //print("populateSongsWithFilter::params: $params");
+        buildQuery(sortSongs, sortOrder, searchStrings, selectedItems);
+    print("populateSongsWithFilter::query: $query");
+    print("populateSongsWithFilter::params: $params");
 
     return await db.customQuery(query, params);
   }
@@ -178,7 +183,7 @@ class MusicSorter {
     for (Map<String, Object?> row in results) {
       int id = row[columnId] as int;
       if (allSongs[id] != null) {
-        provider.addSong(allSongs[id]!);
+        provider.addSong(id);
       }
     }
   }
@@ -211,10 +216,68 @@ class MusicSorter {
     List<Map<String, Object?>> results = await db.customQuery(query, params);
     print("populateItemListWithFilter::results: $results");
     print("populateItemListWithFilter::sortString: $sortString");
+
+    Map<String, String> yearsToFirstItem = {};
     for (Map<String, Object?> row in results) {
-      String item = row[sortString].toString();
-      provider.addItem(item);
+      if (sortString == sortDecades) {
+        String item = row[columnYear].toString();
+        String decade = item == undefinedTag ? item : getDecadeFromYear(item);
+        provider.addItem(decade);
+      } else {
+        String item = row[sortToColumn[sortString]].toString();
+        provider.addItem(item);
+        if (sortString == sortAlbums || sortString == sortYears) {
+          String year = row[columnYear].toString();
+          if (year != undefinedTag && !yearsToFirstItem.containsKey(year)) {
+            yearsToFirstItem[year] = item;
+          }
+        }
+      }
     }
+    populateChronologicalQuickSort(provider, yearsToFirstItem);
+  }
+
+  LinkedHashSet<String> getDecadesFromYears(List<String> years) {
+    LinkedHashSet<String> decades = LinkedHashSet();
+    for (String year in years) {
+      String decade = getDecadeFromYear(year);
+      decades.add(decade);
+    }
+    return decades;
+  }
+
+  String getDecadeFromYear(String year) {
+    return "${year.substring(0, 3)}0s";
+  }
+
+  void populateChronologicalQuickSort(
+      MusicProvider provider, Map<String, String> yearsToFirstItem) {
+    String orderType = provider.orderType;
+    Map<String, String> chronologicalQuickSort = {};
+    print("populateChronologicalQuickSort::orderType: $orderType");
+    if (orderType != orderAlphabetically) {
+      print(
+          "populateChronologicalQuickSort::yearsToFirstItem: $yearsToFirstItem");
+      if (yearsToFirstItem.length > quickSortMinimumLimit) {
+        List<String> years = yearsToFirstItem.keys.toList();
+        LinkedHashSet<String> decades = getDecadesFromYears(years);
+        print("populateChronologicalQuickSort::decades: $decades");
+        if (decades.length > quickSortMinimumLimit) {
+          for (String decade in decades) {
+            List<String> yearsInDecade = years.where((item) {
+              return item.startsWith(decade.substring(0, 3));
+            }).toList();
+            chronologicalQuickSort[decade] =
+                yearsToFirstItem[yearsInDecade[0]]!;
+          }
+        } else {
+          chronologicalQuickSort.addAll(yearsToFirstItem);
+        }
+      }
+    }
+    print(
+        "populateChronologicalQuickSort::chronologicalQuickSort: $chronologicalQuickSort");
+    provider.chronologicalQuickSort = chronologicalQuickSort;
   }
 
   // Playlists
@@ -283,13 +346,13 @@ class MusicSorter {
     }).toList();
   }
 
-  List<Song> searchSongs(List<Song> list, String query) {
+  List<int> searchSongs(List<int> list, String query) {
     // Clean the query as well
     String cleanedQuery = cleanString(query);
 
     // Filter the list and return only the matches (case-insensitive and ignoring "The " and "A ").
-    return list.where((song) {
-      return cleanString(song.title).contains(cleanedQuery);
+    return list.where((id) {
+      return cleanString(allSongs[id]!.title).contains(cleanedQuery);
     }).toList();
   }
 
@@ -327,33 +390,38 @@ class MusicSorter {
     String orderBy = getOrderBy(sortString, sortOrder);
 
     for (String sort in sortOrder) {
-      if (sort == tablePlaylists) {
+      if (sort == sortPlaylists) {
         select += "P.$columnName";
         from += getJoinType(from, sortString);
         from += "$tablePlaylists AS P\n";
         where += getWhere(
-            where, sort, "P.$columnPlaylistName", searchStrings, selectedItems);
-      } else if (sort == columnArtist) {
+            where, sort, "P.$columnName", searchStrings, selectedItems);
+      } else if (sort == sortArtists) {
         select += "A.$columnArtist";
         from += getJoinType(from, sort);
         from += "$tableArtists AS A\n";
-        where += getWhere(where, sort, "A.$sort", searchStrings, selectedItems);
-      } else if (sort == columnAlbum) {
-        select += "S.$columnAlbum";
-        where += getWhere(where, sort, "S.$sort", searchStrings, selectedItems);
-      } else if (sort == columnGenre) {
+        where += getWhere(
+            where, sort, "A.$columnArtist", searchStrings, selectedItems);
+      } else if (sort == sortAlbums) {
+        select += "S.$columnAlbum, S.$columnYear";
+        where += getWhere(
+            where, sort, "S.$columnAlbum", searchStrings, selectedItems);
+      } else if (sort == sortGenres) {
         select += "G.$columnGenre";
         from += getJoinType(from, sort);
         from += "$tableGenres AS G\n";
-        where += getWhere(where, sort, "G.$sort", searchStrings, selectedItems);
-      } else if (sort == columnYear) {
+        where += getWhere(
+            where, sort, "G.$columnGenre", searchStrings, selectedItems);
+      } else if (sort == sortYears || sort == sortDecades) {
         select += "S.$columnYear";
-        where += getWhere(where, sort, "S.$sort", searchStrings, selectedItems);
-      } else if (sort == columnModifiedDate) {
+        where += getWhere(
+            where, sort, "S.$columnYear", searchStrings, selectedItems);
+      } else if (sort == sortDateAdded) {
         select += "S.$columnModifiedDate";
-        where += getWhere(where, sort, "S.$sort", searchStrings, selectedItems);
-      } else if (sort == tableSongs) {
-        select += "S.$columnId, S.$columnTitle";
+        where += getWhere(
+            where, sort, "S.$columnModifiedDate", searchStrings, selectedItems);
+      } else if (sort == sortSongs) {
+        select += "S.$columnId, S.$columnTitle, S.$columnYear";
         from += getJoinType(from, sort);
         from += "$tableSongs AS S \n";
         where += getWhere(
@@ -369,17 +437,17 @@ class MusicSorter {
       where = "";
     }
 
-    if (sortOrder.contains(columnArtist)) {
+    if (sortOrder.contains(sortArtists)) {
       from +=
           "JOIN $tableSongArtists AS SA ON S.$columnId = SA.$columnSongId AND A.$columnId = SA.$columnArtistId\n";
     }
-    if (sortOrder.contains(columnGenre)) {
+    if (sortOrder.contains(sortGenres)) {
       from +=
           "JOIN $tableSongGenres AS SG ON S.ID = SG.$columnSongId AND G.$columnId = SG.$columnGenreId";
     }
-    if (sortOrder.contains(tablePlaylists)) {
+    if (sortOrder.contains(sortPlaylists)) {
       from +=
-          "LEFT JOIN $tablePlaylistSongs AS SP ON S.$columnId = SP.$columnSongId AND P.$columnName = SP.$columnPlaylistName";
+          "JOIN $tablePlaylistSongs AS SP ON S.$columnId = SP.$columnSongId AND P.$columnName = SP.$columnPlaylistName";
     }
 
     return "SELECT DISTINCT $select $from $where ORDER BY $orderBy";
@@ -409,8 +477,14 @@ class MusicSorter {
       and = "AND ";
     }
     String item = selectedItems[sortString] ?? "";
+
     if (item.isNotEmpty) {
-      where += "$and $column = ?\n";
+      if (sortString == sortDecades) {
+        item = "${item.substring(0, 3)}%";
+        where += "$and $column LIKE ?\n";
+      } else {
+        where += "$and $column = ?\n";
+      }
       and = "AND ";
     }
     return where;
@@ -420,15 +494,17 @@ class MusicSorter {
       Map<String, String> searchStrings, Map<String, String> selectedItems) {
     List<String> selection = <String>[];
 
-    selection =
-        addParsedSearchString(searchStrings[tableSongs], selection, tableSongs);
+    selection = addParsedSearchString(searchStrings[sortSongs], selection);
 
     for (String sort in sortOrder) {
-      if (sort != tableSongs) {
+      if (sort != sortSongs) {
         //print("buildParams::sort $sort");
-        selection = addParsedSearchString(searchStrings[sort], selection, sort);
+        selection = addParsedSearchString(searchStrings[sort], selection);
         String item = selectedItems[sort] ?? "";
         if (item.isNotEmpty) {
+          if (sort == sortDecades) {
+            item = "${item.substring(0, 3)}%";
+          }
           selection.add(item);
         }
       }
@@ -437,7 +513,7 @@ class MusicSorter {
   }
 
   List<String> addParsedSearchString(
-      String? searchString, List<String> selection, String sortString) {
+      String? searchString, List<String> selection) {
     //print("addParsedSearchString::searchString: $searchString");
     String parsedString = searchString ?? "";
     if (parsedString.isNotEmpty) {
@@ -454,25 +530,25 @@ class MusicSorter {
 
     String orderBy = "";
 
-    if (sortString == columnArtist) {
+    if (sortString == sortArtists) {
       orderBy = getOrderByWithIgnore("A.$columnArtist");
-    } else if (sortString == columnAlbum) {
+    } else if (sortString == sortAlbums) {
       if (albumOrderType == orderAlphabetically) {
         orderBy = getOrderByWithIgnore("S.$columnAlbum");
-      } else if (albumOrderType == orderChronolically) {
+      } else if (albumOrderType == orderChronologically) {
         orderBy = "S.$columnYear";
-      } else if (albumOrderType == orderReverseChronolically) {
+      } else if (albumOrderType == orderReverseChronologically) {
         orderBy = "S.$columnYear DESC";
       }
-    } else if (sortString == columnGenre) {
+    } else if (sortString == sortGenres) {
       orderBy = getOrderByWithIgnore("G.$columnGenre");
-    } else if (sortString == columnYear) {
-      if (yearOrderType == orderChronolically) {
+    } else if (sortString == sortYears || sortString == sortDecades) {
+      if (yearOrderType == orderChronologically) {
         orderBy = "S.$columnYear";
-      } else if (yearOrderType == orderReverseChronolically) {
+      } else if (yearOrderType == orderReverseChronologically) {
         orderBy = "S.$columnYear DESC";
       }
-    } else if (sortString == columnModifiedDate) {
+    } else if (sortString == sortDateAdded) {
       orderBy = "substr(S.ModifiedDate,7)||\n" +
           "case when substr(S.ModifiedDate,4,3) = 'Jan' then 01\n" +
           "when substr(S.ModifiedDate,4,3) = 'Feb' then '02'\n" +
@@ -488,13 +564,13 @@ class MusicSorter {
           "when substr(S.ModifiedDate,4,3) = 'Dec' then '12'\n" +
           "end||\n" +
           "substr(S.ModifiedDate,1,2)";
-    } else if (sortString == tablePlaylists) {
+    } else if (sortString == sortPlaylists) {
       orderBy = getOrderByWithIgnore("P.$columnName");
-    } else if (sortString == tableSongs) {
+    } else if (sortString == sortSongs) {
       if (sortOrder.length > 1) {
-        if (songOrderType == orderChronolically) {
+        if (songOrderType == orderChronologically) {
           return "S.$columnYear, S.$columnTrackNumber";
-        } else if (songOrderType == orderChronolically) {
+        } else if (songOrderType == orderChronologically) {
           return "S.$columnYear DESC";
         }
       }

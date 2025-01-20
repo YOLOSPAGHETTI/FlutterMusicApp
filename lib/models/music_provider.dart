@@ -1,10 +1,9 @@
 import 'dart:collection';
-import 'dart:math';
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:music_app/constants.dart';
+import 'package:music_app/models/audio_handler.dart';
 import 'package:music_app/models/list_history.dart';
 import 'package:music_app/models/music_sorter.dart';
 import 'package:music_app/models/quick_sort.dart';
@@ -12,49 +11,54 @@ import 'package:music_app/models/settings_provider.dart';
 import 'package:music_app/models/song.dart';
 
 class MusicProvider extends ChangeNotifier {
+  late AudioHandler audioHandler;
   final MusicSorter sorter = MusicSorter();
 
   // Lists
-  final List<Song> songs = <Song>[];
-  final List<Song> _limitedSongs = <Song>[];
-  final Queue<Song> manualQueue = Queue<Song>();
-  final Queue<Song> autoQueue = Queue<Song>();
-  final Queue<Song> _fullQueue = Queue<Song>();
+  final List<int> songIds = <int>[];
+  final List<int> _limitedSongIds = <int>[];
   final Map<String, ListHistory> itemTree = {};
   final LinkedHashSet<String> items = LinkedHashSet();
   final List<String> _limitedItems = <String>[];
   final Map<String, QuickSort> quickSortMap = {};
   final List<String> _playlists = <String>[];
+  int _playingSongIndex = -1;
   bool _isLoading = false;
   int firstLoadedIndex = 0;
   int lastLoadedIndex = 0;
   int loadIncrement = 100;
 
-  // Playback
-  int _currentQueueIndex = -1;
-  final AudioPlayer _audioPlayer = AudioPlayer();
-  Duration _currentDuration = Duration.zero;
-  Duration _totalDuration = Duration.zero;
-  bool _isPlaying = false;
-  bool _shuffle = false;
-  int _repeat = 0; // 0 = off, 1 = repeat, 2 = repeat1
-
   // Sorting
-  String _sortString = tableSongs;
-  final List<String> _sortOrder = <String>[tableSongs];
+  String _sortString = sortSongs;
+  final List<String> _sortOrder = <String>[sortSongs];
   final Map<String, String> _searchStrings = {};
   final Map<String, String> selectedItems = {};
   bool _isFirstSort = true;
   bool _shouldShowSidebar = true;
   String _orderType = orderAlphabetically;
+  final Map<String, String> _chronologicalQuickSort = {};
+
+  // Playback
+  bool _isPlaying = false;
+  Duration _currentDuration = Duration.zero;
+  Duration _totalDuration = Duration.zero;
+  bool _shuffle = false;
+  int _repeat = 0; // 0 = off, 1 = repeat, 2 = repeat1
+
+  // Queue
+  final List<int> _queue = <int>[];
+  final List<int> manualQueue = <int>[];
+  int _currentQueueIndex = -1;
 
   // Getters
   // Lists
-  List<Song> get limitedSongs => _limitedSongs;
-  Queue<Song> get fullQueue => _fullQueue;
+  List<int> get limitedSongIds => _limitedSongIds;
+  List<int> get queue => _queue;
   List<String> get limitedItems => _limitedItems;
   bool get isLoading => _isLoading;
   List<String> get playlists => _playlists;
+  int get playingSongIndex => _playingSongIndex;
+  Map<String, String> get chronologicalQuickSort => _chronologicalQuickSort;
 
   // Playback
   int get currentQueueIndex => _currentQueueIndex;
@@ -73,40 +77,44 @@ class MusicProvider extends ChangeNotifier {
   Map<String, String> get searchStrings => _searchStrings;
 
   MusicProvider() {
-    listenToDuration();
+    init();
+  }
+
+  void init() async {
+    audioHandler = await initAudioService(this);
   }
 
   // Loading
   void loadSongs() async {
-    songs.clear();
-    _limitedSongs.clear();
+    songIds.clear();
+    _limitedSongIds.clear();
     print("loadSongs::_sortOrder: $_sortOrder");
     await sorter.populateSongs(this);
-    if (_limitedSongs.isEmpty) {
-      loadStartOfList(songs.length);
+    if (_limitedSongIds.isEmpty) {
+      loadStartOfList(songIds.length);
     }
     populateQuickSort();
   }
 
   void loadSongsWithFilter() async {
-    songs.clear();
-    _limitedSongs.clear();
-    _sortString = tableSongs;
+    songIds.clear();
+    _limitedSongIds.clear();
+    _sortString = sortSongs;
     setIsFirstSort();
     await sorter.populateSongsWithFilter(this);
-    if (_limitedSongs.isEmpty) {
-      loadStartOfList(songs.length);
+    if (_limitedSongIds.isEmpty) {
+      loadStartOfList(songIds.length);
     }
     populateQuickSort();
   }
 
   void loadFavoriteSongs() async {
-    songs.clear();
-    _limitedSongs.clear();
+    songIds.clear();
+    _limitedSongIds.clear();
     setIsFirstSort();
     await sorter.populateFavoriteSongs(this);
-    if (_limitedSongs.isEmpty) {
-      loadStartOfList(songs.length);
+    if (_limitedSongIds.isEmpty) {
+      loadStartOfList(songIds.length);
     }
     populateQuickSort();
   }
@@ -154,6 +162,7 @@ class MusicProvider extends ChangeNotifier {
   }
 
   Future<void> loadPreviousItems() async {
+    setOrderType();
     if (!itemTree.containsKey(_sortString)) {
       loadPageList();
     } else {
@@ -167,10 +176,10 @@ class MusicProvider extends ChangeNotifier {
   }
 
   void query(String query) {
-    if (_sortString == tableSongs) {
-      List<Song> tempSongs = sorter.searchSongs(songs, query);
-      _limitedSongs.clear();
-      _limitedSongs.addAll(tempSongs);
+    if (_sortString == sortSongs) {
+      List<int> tempSongs = sorter.searchSongs(songIds, query);
+      _limitedSongIds.clear();
+      _limitedSongIds.addAll(tempSongs);
     } else {
       items.clear();
       items.addAll(sorter.searchItems(itemTree[_sortString]!.items, query));
@@ -178,14 +187,14 @@ class MusicProvider extends ChangeNotifier {
     safeNotify();
   }
 
-  void addSong(Song song) {
-    songs.add(song);
-    print("addSong::limitedSongs: $limitedSongs");
-    if (limitedSongs.isEmpty) {
+  void addSong(int songId) {
+    songIds.add(songId);
+    print("addSong::limitedSongs: $limitedSongIds");
+    if (limitedSongIds.isEmpty) {
       //print("addSong::songsLength: " + songs.length.toString());
       //print("addSong::populationSize: " + sorter.populationSize.toString());
-      if (songs.length > loadIncrement) {
-        loadStartOfList(songs.length);
+      if (songIds.length > loadIncrement) {
+        loadStartOfList(songIds.length);
       }
     }
     notifyListeners();
@@ -209,13 +218,15 @@ class MusicProvider extends ChangeNotifier {
   void setOrderType() {
     String songOrderType = SettingsProvider().songOrderType;
     String albumOrderType = SettingsProvider().albumOrderType;
+    String yearOrderType = SettingsProvider().yearOrderType;
 
-    if (_sortString == tableSongs && sortOrder.length > 1) {
+    print("setOrderType::_sortString: $_sortString");
+    if (_sortString == sortSongs && sortOrder.length > 1) {
       _orderType = songOrderType;
-    } else if (_sortString == columnAlbum) {
+    } else if (_sortString == sortAlbums) {
       _orderType = albumOrderType;
-    } else if (_sortString == columnYear) {
-      _orderType = orderChronolically;
+    } else if (_sortString == sortYears || _sortString == sortDecades) {
+      _orderType = yearOrderType;
     } else {
       _orderType = orderAlphabetically;
     }
@@ -265,6 +276,9 @@ class MusicProvider extends ChangeNotifier {
     _sortString = sortString;
     clearSortLists();
     _sortOrder.add(sortString);
+    if (!isSongList()) {
+      _sortOrder.add(sortSongs);
+    }
 
     print("setSortSingle::_sortOrder: $_sortOrder");
     loadPageList();
@@ -294,35 +308,43 @@ class MusicProvider extends ChangeNotifier {
   }
 
   void loadPageList() {
-    _limitedSongs.clear();
+    _limitedSongIds.clear();
     _limitedItems.clear();
-    if (_sortString == tableSongs) {
+
+    setOrderType();
+    if (_sortString == sortSongs) {
       loadSongsWithFilter();
-    } else if (_sortString == columnFavorite) {
+    } else if (_sortString == sortFavorites) {
       loadFavoriteSongs();
-    } else if (sortOrder.length == 1 && sortOrder.contains(tablePlaylists)) {
+    } else if (sortOrder.length == 2 && sortOrder.contains(sortPlaylists)) {
       loadPlaylists();
     } else {
-      _sortOrder.add(tableSongs);
       loadItemsWithFilter();
     }
     safeNotify();
   }
 
   bool isSongList() {
-    if (_sortString == tableSongs || _sortString == columnFavorite) {
+    if (_sortString == sortSongs || _sortString == sortFavorites) {
       return true;
     }
     return false;
   }
 
   // Quick Sort
+  set chronologicalQuickSort(Map<String, String> items) {
+    _chronologicalQuickSort.clear();
+    _chronologicalQuickSort.addAll(items);
+    notifyListeners();
+  }
+
   void setShouldShowSidebar() {
-    if (_sortString == columnModifiedDate) {
+    bool songList = isSongList();
+    if (_sortString == sortDateAdded) {
       _shouldShowSidebar = false;
-    } else if ((isSongList()) && _limitedSongs.length <= 5) {
+    } else if (songList && _limitedSongIds.length <= quickSortMinimumLimit) {
       _shouldShowSidebar = false;
-    } else if (_sortString != tableSongs && items.length <= 5) {
+    } else if (!songList && items.length <= quickSortMinimumLimit) {
       _shouldShowSidebar = false;
     } else {
       _shouldShowSidebar = true;
@@ -344,12 +366,11 @@ class MusicProvider extends ChangeNotifier {
     if (_orderType == orderAlphabetically) {
       return alphabet;
     } else {
-      return decades; // Dynamically populate this with decades/years
+      return chronologicalQuickSort.keys.toList();
     }
   }
 
   void populateQuickSort() {
-    setOrderType();
     setShouldShowSidebar();
     if (_shouldShowSidebar) {
       if (itemTree.containsKey(_sortString)) {
@@ -361,7 +382,7 @@ class MusicProvider extends ChangeNotifier {
         for (String item in list) {
           QuickSort quickSort =
               QuickSort(startIndex: 0, endIndex: 0, position: 0);
-          quickSort.initialize(this, item, lastPosition);
+          lastPosition = quickSort.initialize(this, item, lastPosition);
           quickSortMap[item] = quickSort;
         }
       }
@@ -379,16 +400,20 @@ class MusicProvider extends ChangeNotifier {
     _isLoading = true;
     firstLoadedIndex = startIndex;
     lastLoadedIndex = endIndex;
-    print("loadLimitedList::lastLoadedIndex: $firstLoadedIndex");
-    print("loadLimitedList::lastLoadedIndex: $lastLoadedIndex");
+    //print("loadLimitedList::lastLoadedIndex: $firstLoadedIndex");
+    //print("loadLimitedList::lastLoadedIndex: $lastLoadedIndex");
     if (isSongList()) {
-      print("loadLimitedList::_limitedSongsLength: " +
-          _limitedSongs.length.toString());
-      _limitedSongs.clear();
-      _limitedSongs.addAll(songs.sublist(firstLoadedIndex, lastLoadedIndex));
+      /*print("loadLimitedList::_limitedSongsLength: " +
+          _limitedSongIds.length.toString());*/
+      _limitedSongIds.clear();
+      _limitedSongIds
+          .addAll(songIds.sublist(firstLoadedIndex, lastLoadedIndex));
+      if (_currentQueueIndex != -1) {
+        _playingSongIndex = _limitedSongIds.indexOf(_queue[_currentQueueIndex]);
+      }
     } else {
-      print("loadLimitedList::_limitedItemsLength: " +
-          _limitedItems.length.toString());
+      /*print("loadLimitedList::_limitedItemsLength: " +
+          _limitedItems.length.toString());*/
       _limitedItems.clear();
       _limitedItems
           .addAll(items.toList().sublist(firstLoadedIndex, lastLoadedIndex));
@@ -404,7 +429,7 @@ class MusicProvider extends ChangeNotifier {
     if (fromEnd) {
       endIndex = lastLoadedIndex + loadIncrement;
       if (isSongList()) {
-        endIndex = getEndForLimitedList(endIndex, songs.length);
+        endIndex = getEndForLimitedList(endIndex, songIds.length);
       } else {
         endIndex = getEndForLimitedList(endIndex, items.length);
       }
@@ -437,7 +462,7 @@ class MusicProvider extends ChangeNotifier {
 
   void setFavorite(int songId, bool newFavorite) {
     sorter.setFavorite(songId, newFavorite);
-    if (_sortString == columnFavorite) {
+    if (_sortString == sortFavorites) {
       loadFavoriteSongs();
     }
   }
@@ -450,10 +475,7 @@ class MusicProvider extends ChangeNotifier {
   Future<bool> addPlaylist(String name) async {
     bool exists = await sorter.addPlaylist(name);
     if (!exists) {
-      addItem(name);
-      itemTree[_sortString]!.items.add(name);
-      populateQuickSort();
-      _playlists.add(name);
+      loadPlaylists();
     }
     return exists;
   }
@@ -472,7 +494,7 @@ class MusicProvider extends ChangeNotifier {
     bool exists = true;
     // Implement for other sort strings
     if (isSongList()) {
-      int id = _limitedSongs[songIndex].id;
+      int id = _limitedSongIds[songIndex];
       String name = _playlists[playlistIndex];
       bool exists = await sorter.addSongToPlaylist(name, id);
       if (!exists) {
@@ -482,95 +504,77 @@ class MusicProvider extends ChangeNotifier {
     return exists;
   }
 
+  Song getSongFromId(int id) {
+    return sorter.allSongs[id]!;
+  }
+
   void safeNotify() {
     SchedulerBinding.instance.addPostFrameCallback((_) {
       notifyListeners(); // Notify listeners after the current frame is rendered
     });
   }
 
-  // Playback controls
-  void play() async {
-    final String path = _fullQueue.elementAt(_currentQueueIndex).source;
-    await _audioPlayer.stop();
-    await _audioPlayer.play(DeviceFileSource(path));
-    _isPlaying = true;
-    notifyListeners();
-  }
-
-  void pause() async {
-    await _audioPlayer.pause();
-    _isPlaying = false;
-    notifyListeners();
-  }
-
-  void resume() async {
-    await _audioPlayer.resume();
-    _isPlaying = true;
+  // Playback
+  set isPlaying(bool isPlaying) {
+    _isPlaying = isPlaying;
     notifyListeners();
   }
 
   void pauseOrResume() async {
     if (_isPlaying) {
-      pause();
+      _isPlaying = false;
+      audioHandler.pause();
     } else {
-      resume();
+      _isPlaying = true;
+      audioHandler.resume();
     }
     notifyListeners();
   }
 
-  void seek(Duration position) async {
-    await _audioPlayer.seek(position);
-  }
-
   void playNextSong() async {
-    //print("Current Song: $_currentQueueIndex");
-    if (_repeat == 2) {
-      if (_isPlaying) {
-        seek(Duration.zero);
+    if (audioHandler.playerIsReady()) {
+      if (_repeat == 2) {
+        if (_isPlaying) {
+          audioHandler.seek(Duration.zero);
+        }
       } else {
-        play();
-      }
-    } else {
-      if (_currentQueueIndex < _fullQueue.length - 1) {
-        _currentQueueIndex = _currentQueueIndex + 1;
-      } else if (repeat == 1) {
-        _currentQueueIndex = 0;
+        if (_currentQueueIndex < _queue.length - 1) {
+          _currentQueueIndex++;
+          _playingSongIndex++;
+          manualQueue.remove(_queue[_currentQueueIndex]);
+          audioHandler.seekToNext();
+        } else if (_repeat == 1) {
+          _currentQueueIndex = 0;
+          audioHandler.restartPlaylist();
+          audioHandler.play();
+        } else {
+          _currentQueueIndex = -1;
+          audioHandler.restartPlaylist();
+        }
       }
     }
-    //print("New Song: $_currentQueueIndex");
-    play();
   }
 
   void playPreviousSong() async {
-    //print("playprev");
-    if (_currentDuration.inSeconds > 2) {
-      seek(Duration.zero);
-    } else {
-      if (_currentQueueIndex > 0) {
-        _currentQueueIndex = _currentQueueIndex - 1;
+    if (audioHandler.playerIsReady()) {
+      if (_currentDuration.inSeconds > 2 || _currentQueueIndex == 0) {
+        audioHandler.seek(Duration.zero);
       } else {
-        _currentQueueIndex = _fullQueue.length - 1;
+        _currentQueueIndex--;
+        _playingSongIndex--;
+        audioHandler.seekToPrevious();
       }
     }
-    play();
   }
 
-  void listenToDuration() {
-    _audioPlayer.onDurationChanged.listen((newDuration) {
-      _totalDuration = newDuration;
-      notifyListeners();
-    });
+  set totalDuration(Duration totalDuration) {
+    _totalDuration = totalDuration;
+    notifyListeners();
+  }
 
-    _audioPlayer.onPositionChanged.listen((newPosition) {
-      _currentDuration = newPosition;
-      notifyListeners();
-    });
-
-    _audioPlayer.onPlayerComplete.listen((event) {
-      _isPlaying = false;
-      notifyListeners();
-      playNextSong();
-    });
+  set currentDuration(Duration currentDuration) {
+    _currentDuration = currentDuration;
+    notifyListeners();
   }
 
   set repeat(int repeat) {
@@ -580,77 +584,123 @@ class MusicProvider extends ChangeNotifier {
 
   void toggleShuffle() {
     _shuffle = !_shuffle;
-    if (_shuffle) {
+    if (shuffle) {
       shuffleQueue();
     }
     notifyListeners();
   }
 
-  // Queues
-  void startQueue(int currentSongIndex) {
-    autoQueue.clear();
-    if (manualQueue.isNotEmpty) {
-      manualQueue.removeFirst();
-    }
+  Song getCurrentSong() {
+    int songId = _queue[_currentQueueIndex];
+    return getSongFromId(songId);
+  }
+
+  // Queue
+  set currentQueueIndex(int currentQueueIndex) {
+    _currentQueueIndex = currentQueueIndex;
+    notifyListeners();
+  }
+
+  void startQueue(int currentSongIndex) async {
+    audioHandler.restartPlaylist();
+    audioHandler.clearPlaylist();
+
+    _playingSongIndex = currentSongIndex;
+
+    int songId = _limitedSongIds[currentSongIndex];
+    int songIndex = songIds.indexOf(songId);
+    List<int> songIdsToPlay = <int>[songId];
+    songIdsToPlay.addAll(songIds.sublist(songIndex + 1, songIds.length));
+
     _currentQueueIndex = 0;
-    Song currentSong = _limitedSongs[currentSongIndex];
-    manualQueue.addFirst(currentSong);
+    manualQueue.insert(0, songId);
 
-    int songIndex = songs.indexOf(currentSong);
-    autoQueue.addAll(songs.sublist(songIndex + 1, songs.length));
+    audioHandler.addToPlaylist(songIdsToPlay);
 
-    _fullQueue.clear();
-    _fullQueue.addAll(manualQueue);
-    _fullQueue.addAll(autoQueue);
+    _queue.clear();
+    _queue.addAll(songIdsToPlay);
 
-    if (shuffle) {
+    if (_shuffle) {
       shuffleQueue();
     }
-    play();
+    audioHandler.updateSongAndPlay();
   }
 
   void addToQueue(int index) async {
     if (isSongList()) {
-      manualQueue.addLast(_limitedSongs[index]);
+      addSongToQueue(_limitedSongIds[index]);
     } else {
       String query = _limitedItems[index];
       Map<String, String> selectedItemsNew = {};
       selectedItemsNew.addAll(selectedItems);
       selectedItemsNew[_sortString] = query;
-      List<Song> songsToAdd = await sorter.getSongsWithFilter(
+      List<int> songIdsToAdd = await sorter.getSongsWithFilter(
           sortOrder, searchStrings, selectedItemsNew);
-      manualQueue.addAll(songsToAdd);
+      addSongsToQueue(songIdsToAdd);
     }
-    fullQueue.clear();
-    fullQueue.addAll(manualQueue);
-    fullQueue.addAll(autoQueue);
-    // Add more queue logic for other sortStrings
   }
 
-  void shuffleQueue() {
+  void addSongToQueue(int songId) async {
+    int position = getNextManualQueuePosition();
+    manualQueue.add(songId);
+    audioHandler.addToPlaylistAtIndex(<int>[songId], position);
+
+    _queue.insert(position, songId);
+  }
+
+  void addSongsToQueue(List<int> songIds) async {
+    int position = getNextManualQueuePosition();
+    manualQueue.addAll(songIds);
+    audioHandler.addToPlaylistAtIndex(songIds, position);
+
+    _queue.insertAll(position, songIds);
+  }
+
+  void shuffleQueue() async {
     //print("shuffling");
     // Step 1: Convert the queue to a list
-    Song currentSong = _fullQueue.removeFirst();
-    print(currentSong.title);
-    List<Song> list = _fullQueue.toList();
+    List<int> autoQueue = <int>[];
+    autoQueue.addAll(_queue);
+    int currentSongId = -1;
+    if (autoQueue.isNotEmpty) {
+      currentSongId = autoQueue.removeAt(0);
+      autoQueue.shuffle();
+    }
 
     // Step 2: Shuffle the list
-    final random = Random();
+    /*final random = Random();
     for (int i = list.length - 1; i > 0; i--) {
       int j = random.nextInt(i + 1); // Random index between 0 and i
       var temp = list[i];
       list[i] = list[j];
       list[j] = temp;
-    }
+    }*/
 
     // Step 3: Clear the queue and refill it with shuffled elements
     manualQueue.clear();
-    autoQueue.clear();
-    manualQueue.addFirst(currentSong);
+    if (currentSongId != -1) {
+      manualQueue.add(currentSongId);
+    }
     _currentQueueIndex = 0;
-    autoQueue.addAll(list);
-    _fullQueue.addAll(manualQueue);
-    _fullQueue.addAll(autoQueue);
+    _queue.clear();
+    _queue.addAll(manualQueue);
+    _queue.addAll(autoQueue);
     notifyListeners();
+
+    // Figure out how to shuffle using the playlist var
+    audioHandler.shufflePlaylist(_queue, _currentQueueIndex);
+  }
+
+  int getNextManualQueuePosition() {
+    int lastManualQueueElement = -1;
+    if (manualQueue.isNotEmpty) {
+      lastManualQueueElement = manualQueue[manualQueue.length - 1];
+    }
+    int lastPosition = _queue.indexOf(lastManualQueueElement);
+    if (lastPosition < _currentQueueIndex) {
+      lastPosition = _currentQueueIndex;
+    }
+
+    return lastPosition + 1;
   }
 }

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:music_app/components/add_playlist_button.dart';
 import 'package:music_app/components/music_player_controls.dart';
 import 'package:music_app/components/music_player_drawer.dart';
 import 'package:music_app/components/quick_sort_sidebar.dart';
@@ -8,7 +9,6 @@ import 'package:music_app/components/text_marquee.dart';
 import 'package:music_app/constants.dart';
 import 'package:music_app/models/database_helper.dart';
 import 'package:music_app/models/music_provider.dart';
-import 'package:music_app/models/song.dart';
 import 'package:music_app/pages/check_permissions_page.dart';
 import 'package:provider/provider.dart';
 
@@ -37,8 +37,6 @@ class _HomePageState extends State<HomePage> {
   double oldScrollOffset = 0;
   double jumpOffset = 0;
   static const int simulatedScrollTime = 5000;
-
-  TextEditingController addPlaylistController = TextEditingController();
 
   int longPressIndex = 0;
 
@@ -75,7 +73,7 @@ class _HomePageState extends State<HomePage> {
   void loadSongs() async {
     await setDatabasePopulated();
     if (dbPopulated) {
-      if (musicProvider.sortString == tableSongs) {
+      if (musicProvider.sortString == sortSongs) {
         musicProvider.getPlaylists();
         musicProvider.loadSongs();
       }
@@ -162,7 +160,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Consumer<MusicProvider>(builder: (context, value, child) {
-      List<Song> songs = value.limitedSongs;
+      List<int> songIds = value.limitedSongIds;
       List<String> items = value.limitedItems;
 
       return PopScope(
@@ -195,96 +193,8 @@ class _HomePageState extends State<HomePage> {
                                     Theme.of(context).colorScheme.secondary)),
                         SizedBox(width: 10),
                         Visibility(
-                            visible: value.sortString == tablePlaylists,
-                            child: IconButton(
-                                onPressed: () {
-                                  showDialog(
-                                      context: context,
-                                      builder: (BuildContext context) {
-                                        String errorMessage = "";
-
-                                        return StatefulBuilder(
-                                          builder: (BuildContext context,
-                                              StateSetter setState) {
-                                            void addPlaylist() async {
-                                              if (addPlaylistController
-                                                  .text.isEmpty) {
-                                                setState(() {
-                                                  errorMessage =
-                                                      "Please give the playlist a name.";
-                                                });
-                                                return;
-                                              }
-                                              bool exists = await musicProvider
-                                                  .addPlaylist(
-                                                      addPlaylistController
-                                                          .text);
-
-                                              if (exists) {
-                                                setState(() {
-                                                  errorMessage =
-                                                      "A playlist with this name already exists.";
-                                                });
-                                                return;
-                                              }
-                                              setState(() {
-                                                errorMessage = "";
-                                              });
-                                              if (mounted) {
-                                                Navigator.of(context).pop();
-                                              }
-                                            }
-
-                                            return AlertDialog(
-                                              title: Text("Create Playlist",
-                                                  style: TextStyle(
-                                                      color: Theme.of(context)
-                                                          .colorScheme
-                                                          .tertiary)),
-                                              content: SizedBox(
-                                                height: 100,
-                                                width: 200,
-                                                child: Column(
-                                                  children: [
-                                                    Expanded(
-                                                        child: TextField(
-                                                            controller:
-                                                                addPlaylistController)),
-                                                    Text(
-                                                      errorMessage,
-                                                      style: TextStyle(
-                                                          color: Colors.red),
-                                                    )
-                                                  ],
-                                                ),
-                                              ),
-                                              actions: [
-                                                Row(children: [
-                                                  TextButton(
-                                                    onPressed: () {
-                                                      addPlaylist();
-                                                    },
-                                                    child: Text('ADD'),
-                                                  ),
-                                                  SizedBox(width: 50),
-                                                  TextButton(
-                                                    onPressed: () {
-                                                      setState(() {
-                                                        errorMessage = "";
-                                                      });
-                                                      Navigator.of(context)
-                                                          .pop(); // Close the dialog
-                                                    },
-                                                    child: Text('CANCEL'),
-                                                  ),
-                                                ])
-                                              ],
-                                            );
-                                          },
-                                        );
-                                      });
-                                },
-                                icon: Icon(Icons.add)))
+                            visible: value.sortString == sortPlaylists,
+                            child: AddPlaylistButton(musicProvider: value))
                       ]),
                 leading: value.isFirstSort
                     ? null
@@ -336,7 +246,8 @@ class _HomePageState extends State<HomePage> {
                 ListView.builder(
                     key: _listViewKey,
                     controller: _scrollController,
-                    itemCount: value.isSongList() ? songs.length : items.length,
+                    itemCount:
+                        value.isSongList() ? songIds.length : items.length,
                     itemBuilder: (context, index) {
                       return SizedBox(
                           height: listTileHeight,
@@ -422,7 +333,7 @@ class _HomePageState extends State<HomePage> {
                                   );
                                 }
 
-                                if (value.sortString == tablePlaylists) {
+                                if (value.sortString == sortPlaylists) {
                                   menuItems.add(
                                     PopupMenuItem<String>(
                                       value: 'delete',
@@ -490,18 +401,33 @@ class _HomePageState extends State<HomePage> {
                               child: ListTile(
                                 title: TextMarquee(
                                   text: value.isSongList()
-                                      ? songs[index].title
+                                      ? value
+                                          .getSongFromId(songIds[index])
+                                          .title
                                       : items[index],
-                                  style: TextStyle(),
+                                  style: TextStyle(
+                                    color: value.playingSongIndex == index
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Colors.black,
+                                  ),
                                   maxWidth: 250,
                                 ),
                                 subtitle: TextMarquee(
                                   text: value.isSongList()
-                                      ? songs[index].artist
+                                      ? value
+                                          .getSongFromId(songIds[index])
+                                          .artist
                                       : "",
-                                  style: TextStyle(),
+                                  style: TextStyle(
+                                    color: value.playingSongIndex == index
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Colors.black,
+                                  ),
                                   maxWidth: 250,
                                 ),
+                                tileColor: value.playingSongIndex == index
+                                    ? Theme.of(context).colorScheme.secondary
+                                    : Colors.transparent,
                                 onTap: () => value.isSongList()
                                     ? value.startQueue(index)
                                     : loadItemList(index),
@@ -515,17 +441,19 @@ class _HomePageState extends State<HomePage> {
                             items: alphabet,
                             scrollController: _scrollController,
                             itemHeight: 22,
+                            itemWidth: 40,
                           )
                         : QuickSortSidebar(
                             musicProvider: value,
-                            items: decades,
+                            items: value.chronologicalQuickSort.keys.toList(),
                             scrollController: _scrollController,
                             itemHeight: 40,
+                            itemWidth: 50,
                           ))
               ]),
               bottomNavigationBar: Visibility(
                 visible:
-                    value.currentQueueIndex != -1 && value.fullQueue.isNotEmpty,
+                    value.currentQueueIndex != -1 && value.queue.isNotEmpty,
                 child: BottomAppBar(
                   color: Theme.of(context).colorScheme.primary,
                   shape: CircularNotchedRectangle(), // Optional for FAB notch

@@ -6,12 +6,14 @@ class QuickSortSidebar extends StatefulWidget {
   final List<String> items;
   final ScrollController scrollController;
   final double itemHeight;
+  final double itemWidth;
 
   const QuickSortSidebar({
     required this.musicProvider,
     required this.items,
     required this.scrollController,
     required this.itemHeight,
+    required this.itemWidth,
     super.key,
   });
 
@@ -68,7 +70,7 @@ class _QuickSortSidebarState extends State<QuickSortSidebar> {
           });
         },
         child: SizedBox(
-          width: 40,
+          width: widget.itemWidth,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: widget.items.map((item) {
