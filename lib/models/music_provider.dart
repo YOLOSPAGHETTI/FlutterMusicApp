@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:music_app/constants.dart';
 import 'package:music_app/models/audio_handler.dart';
+import 'package:music_app/models/lazy_list.dart';
 import 'package:music_app/models/list_history.dart';
 import 'package:music_app/models/music_sorter.dart';
 import 'package:music_app/models/quick_sort.dart';
@@ -15,18 +16,15 @@ class MusicProvider extends ChangeNotifier {
   final MusicSorter sorter = MusicSorter();
 
   // Lists
+  final Map<int, Song> _allSongs = {};
   final List<int> songIds = <int>[];
-  final List<int> _limitedSongIds = <int>[];
+  final LazyList<int> _limitedSongIds = LazyList<int>();
   final Map<String, ListHistory> itemTree = {};
   final LinkedHashSet<String> items = LinkedHashSet();
-  final List<String> _limitedItems = <String>[];
+  final LazyList<String> _limitedItems = LazyList<String>();
   final Map<String, QuickSort> quickSortMap = {};
-  final List<String> _playlists = <String>[];
+  final LinkedHashSet<String> _playlists = LinkedHashSet();
   int _playingSongIndex = -1;
-  bool _isLoading = false;
-  int firstLoadedIndex = 0;
-  int lastLoadedIndex = 0;
-  int loadIncrement = 100;
 
   // Sorting
   String _sortString = sortSongs;
@@ -52,11 +50,11 @@ class MusicProvider extends ChangeNotifier {
 
   // Getters
   // Lists
+  Map<int, Song> get allSongs => _allSongs;
   List<int> get limitedSongIds => _limitedSongIds;
   List<int> get queue => _queue;
   List<String> get limitedItems => _limitedItems;
-  bool get isLoading => _isLoading;
-  List<String> get playlists => _playlists;
+  LinkedHashSet<String> get playlists => _playlists;
   int get playingSongIndex => _playingSongIndex;
   Map<String, String> get chronologicalQuickSort => _chronologicalQuickSort;
 
@@ -82,40 +80,46 @@ class MusicProvider extends ChangeNotifier {
 
   void init() async {
     audioHandler = await initAudioService(this);
+    SettingsProvider().populateAllSettingsFromDatabase();
+  }
+
+  void addSong(int songId, Song song) {
+    _allSongs[songId] = song;
+  }
+
+  void addSongs(Map<int, Song> songs) {
+    _allSongs.addAll(songs);
   }
 
   // Loading
   void loadSongs() async {
     songIds.clear();
-    _limitedSongIds.clear();
-    print("loadSongs::_sortOrder: $_sortOrder");
-    await sorter.populateSongs(this);
-    if (_limitedSongIds.isEmpty) {
-      loadStartOfList(songIds.length);
-    }
+    //print("loadSongs::_sortOrder: $_sortOrder");
+    await sorter.populateFirstSongs(this);
+    loadSongsFromList();
+    await sorter.populateAllSongs(this);
+    sorter.loadAlbumArt(_allSongs);
     populateQuickSort();
+  }
+
+  void reloadSong(int songId) async {
+    await sorter.populateAllSongs(this);
   }
 
   void loadSongsWithFilter() async {
     songIds.clear();
-    _limitedSongIds.clear();
     _sortString = sortSongs;
     setIsFirstSort();
     await sorter.populateSongsWithFilter(this);
-    if (_limitedSongIds.isEmpty) {
-      loadStartOfList(songIds.length);
-    }
+    loadSongsFromList();
     populateQuickSort();
   }
 
   void loadFavoriteSongs() async {
     songIds.clear();
-    _limitedSongIds.clear();
     setIsFirstSort();
     await sorter.populateFavoriteSongs(this);
-    if (_limitedSongIds.isEmpty) {
-      loadStartOfList(songIds.length);
-    }
+    loadSongsFromList();
     populateQuickSort();
   }
 
@@ -123,42 +127,21 @@ class MusicProvider extends ChangeNotifier {
     items.clear();
     safeNotify();
 
-    List<String> itemList = <String>[];
     await sorter.populateItemListWithFilter(this);
-    if (_limitedItems.isEmpty) {
-      loadStartOfList(items.length);
-    }
-
-    // Populate item tree so we remember historical data
-    print("loadItemsWithFilter::itemList: $itemList");
-    itemList.addAll(items);
+    loadItemsFromList();
     populateQuickSort();
-
-    Map<String, QuickSort> tempQuickSort = {};
-    tempQuickSort.addAll(quickSortMap);
-
-    itemTree[_sortString] =
-        ListHistory(items: itemList, quickSort: tempQuickSort);
+    populateListHistory();
   }
 
   void loadPlaylists() async {
     items.clear();
     safeNotify();
 
-    List<String> itemList = <String>[];
     _playlists.addAll(await sorter.getPlaylists());
     items.addAll(_playlists);
-    loadStartOfList(items.length);
-
-    // Populate item tree so we remember historical data
-    itemList.addAll(items);
+    loadItemsFromList();
     populateQuickSort();
-
-    Map<String, QuickSort> tempQuickSort = {};
-    tempQuickSort.addAll(quickSortMap);
-
-    itemTree[_sortString] =
-        ListHistory(items: itemList, quickSort: tempQuickSort);
+    populateListHistory();
   }
 
   Future<void> loadPreviousItems() async {
@@ -167,44 +150,54 @@ class MusicProvider extends ChangeNotifier {
       loadPageList();
     } else {
       items.clear();
-      items.addAll(itemTree[_sortString]!.items);
-      loadLimitedList(
-          itemTree[_sortString]!.startIndex, itemTree[_sortString]!.endIndex);
+      ListHistory history = itemTree[_sortString]!;
+      items.addAll(history.items);
+      _limitedItems.load(history.startIndex, history.endIndex, history.items);
     }
     populateQuickSort();
-    safeNotify();
+    notifyListeners();
+  }
+
+  void loadSongsFromList() {
+    _limitedSongIds.loadStart(songIds);
+    setPlayingSongIndex();
+    notifyListeners();
+  }
+
+  void loadItemsFromList() {
+    _limitedItems.loadStart(items.toList());
+    notifyListeners();
   }
 
   void query(String query) {
     if (_sortString == sortSongs) {
-      List<int> tempSongs = sorter.searchSongs(songIds, query);
-      _limitedSongIds.clear();
-      _limitedSongIds.addAll(tempSongs);
+      List<int> tempSongs = sorter.searchSongs(songIds, query, allSongs);
+      _limitedSongIds.loadStart(tempSongs);
     } else {
-      items.clear();
-      items.addAll(sorter.searchItems(itemTree[_sortString]!.items, query));
+      List<String> tempItems = sorter.searchItems(items.toList(), query);
+      _limitedItems.loadStart(tempItems);
     }
     safeNotify();
   }
 
-  void addSong(int songId) {
+  void addSongToList(int songId) {
     songIds.add(songId);
-    print("addSong::limitedSongs: $limitedSongIds");
+    //print("addSong::limitedSongs: $limitedSongIds");
     if (limitedSongIds.isEmpty) {
       //print("addSong::songsLength: " + songs.length.toString());
       //print("addSong::populationSize: " + sorter.populationSize.toString());
       if (songIds.length > loadIncrement) {
-        loadStartOfList(songIds.length);
+        loadSongsFromList();
       }
     }
     notifyListeners();
   }
 
-  void addItem(String item) {
+  void addItemToList(String item) {
     items.add(item);
     if (limitedItems.isEmpty) {
       if (items.length > loadIncrement) {
-        loadStartOfList(items.length);
+        loadItemsFromList();
       }
     }
     notifyListeners();
@@ -220,7 +213,7 @@ class MusicProvider extends ChangeNotifier {
     String albumOrderType = SettingsProvider().albumOrderType;
     String yearOrderType = SettingsProvider().yearOrderType;
 
-    print("setOrderType::_sortString: $_sortString");
+    //print("setOrderType::_sortString: $_sortString");
     if (_sortString == sortSongs && sortOrder.length > 1) {
       _orderType = songOrderType;
     } else if (_sortString == sortAlbums) {
@@ -238,6 +231,7 @@ class MusicProvider extends ChangeNotifier {
       return false;
     }
     selectedItems.remove(_sortString);
+    print("getPreviousSort::_sortString: $_sortString");
     itemTree.remove(_sortString);
     int sortIndex = _sortOrder.indexOf(_sortString);
     if (sortIndex - 1 >= 0) {
@@ -251,22 +245,22 @@ class MusicProvider extends ChangeNotifier {
   }
 
   void getNextSort(int itemIndex) {
-    print("getNextSort::sortString: $_sortString");
+    //print("getNextSort::sortString: $_sortString");
     // Get selected item
     String query = _limitedItems.elementAt(itemIndex);
     selectedItems[_sortString] = query;
 
     // Set historical limitedList indexes
-    itemTree[_sortString]!.startIndex = firstLoadedIndex;
-    itemTree[_sortString]!.endIndex = lastLoadedIndex;
+    itemTree[_sortString]!.startIndex = _limitedItems.firstLoadedIndex;
+    itemTree[_sortString]!.endIndex = _limitedItems.lastLoadedIndex;
 
-    print("getNextSort::sortOrder: $_sortOrder");
+    //print("getNextSort::sortOrder: $_sortOrder");
     int sortIndex = _sortOrder.indexOf(_sortString);
     if (sortIndex + 1 < _sortOrder.length) {
       _sortString = _sortOrder[sortIndex + 1];
     }
     setIsFirstSort();
-    print("getNextSort::sortString2: $_sortString");
+    //print("getNextSort::sortString2: $_sortString");
     loadPageList();
 
     safeNotify();
@@ -280,7 +274,7 @@ class MusicProvider extends ChangeNotifier {
       _sortOrder.add(sortSongs);
     }
 
-    print("setSortSingle::_sortOrder: $_sortOrder");
+    //print("setSortSingle::_sortOrder: $_sortOrder");
     loadPageList();
   }
 
@@ -301,6 +295,7 @@ class MusicProvider extends ChangeNotifier {
   }
 
   void clearSortLists() {
+    print("clearSortLists");
     _sortOrder.clear();
     _searchStrings.clear();
     selectedItems.clear();
@@ -324,11 +319,27 @@ class MusicProvider extends ChangeNotifier {
     safeNotify();
   }
 
+  void appendToLimitedList(bool fromEnd) {
+    if (isSongList()) {
+      _limitedSongIds.append(fromEnd, songIds);
+    } else {
+      _limitedItems.append(fromEnd, items.toList());
+    }
+    notifyListeners();
+  }
+
   bool isSongList() {
     if (_sortString == sortSongs || _sortString == sortFavorites) {
       return true;
     }
     return false;
+  }
+
+  bool atTopOfList() {
+    if (isSongList()) {
+      return _limitedSongIds.firstLoadedIndex == 0;
+    }
+    return _limitedItems.firstLoadedIndex == 0;
   }
 
   // Quick Sort
@@ -353,8 +364,15 @@ class MusicProvider extends ChangeNotifier {
 
   double getPositionFromQuickSort(String item) {
     if (quickSortMap[item] != null) {
-      loadLimitedList(
-          quickSortMap[item]!.startIndex, quickSortMap[item]!.endIndex);
+      QuickSort quickSort = quickSortMap[item]!;
+
+      if (isSongList()) {
+        _limitedSongIds.load(quickSort.startIndex, quickSort.endIndex, songIds);
+        setPlayingSongIndex();
+      } else {
+        _limitedItems.load(
+            quickSort.startIndex, quickSort.endIndex, items.toList());
+      }
 
       notifyListeners();
     }
@@ -374,8 +392,11 @@ class MusicProvider extends ChangeNotifier {
     setShouldShowSidebar();
     if (_shouldShowSidebar) {
       if (itemTree.containsKey(_sortString)) {
+        ListHistory history = itemTree[_sortString]!;
         quickSortMap.clear();
-        quickSortMap.addAll(itemTree[_sortString]!.quickSort);
+        quickSortMap.addAll(history.quickSort);
+        chronologicalQuickSort.clear();
+        chronologicalQuickSort.addAll(history.chronologicalQuickSort);
       } else {
         int lastPosition = 0;
         List<String> list = getQuickSortItemList();
@@ -389,81 +410,31 @@ class MusicProvider extends ChangeNotifier {
     }
   }
 
-  // Limited List
-  void loadStartOfList(int listLength) {
-    int startIndex = getStartForLimitedList(0);
-    int endIndex = getEndForLimitedList(0, listLength);
-    loadLimitedList(startIndex, endIndex);
-  }
+  void populateListHistory() {
+    List<String> itemList = <String>[];
+    itemList.addAll(items);
 
-  void loadLimitedList(int startIndex, int endIndex) async {
-    _isLoading = true;
-    firstLoadedIndex = startIndex;
-    lastLoadedIndex = endIndex;
-    //print("loadLimitedList::lastLoadedIndex: $firstLoadedIndex");
-    //print("loadLimitedList::lastLoadedIndex: $lastLoadedIndex");
-    if (isSongList()) {
-      /*print("loadLimitedList::_limitedSongsLength: " +
-          _limitedSongIds.length.toString());*/
-      _limitedSongIds.clear();
-      _limitedSongIds
-          .addAll(songIds.sublist(firstLoadedIndex, lastLoadedIndex));
-      if (_currentQueueIndex != -1) {
-        _playingSongIndex = _limitedSongIds.indexOf(_queue[_currentQueueIndex]);
-      }
-    } else {
-      /*print("loadLimitedList::_limitedItemsLength: " +
-          _limitedItems.length.toString());*/
-      _limitedItems.clear();
-      _limitedItems
-          .addAll(items.toList().sublist(firstLoadedIndex, lastLoadedIndex));
-    }
-    notifyListeners();
-    _isLoading = false;
-  }
+    Map<String, QuickSort> tempQuickSort = {};
+    Map<String, String> tempChronologicalQuickSort = {};
+    tempQuickSort.addAll(quickSortMap);
+    tempChronologicalQuickSort.addAll(chronologicalQuickSort);
 
-  void appendToLimitedList(bool fromEnd) async {
-    _isLoading = true;
-    int startIndex = firstLoadedIndex;
-    int endIndex = lastLoadedIndex;
-    if (fromEnd) {
-      endIndex = lastLoadedIndex + loadIncrement;
-      if (isSongList()) {
-        endIndex = getEndForLimitedList(endIndex, songIds.length);
-      } else {
-        endIndex = getEndForLimitedList(endIndex, items.length);
-      }
-    } else if (firstLoadedIndex > 0) {
-      startIndex = firstLoadedIndex - loadIncrement;
-      if (startIndex < 0) {
-        startIndex = 0;
-      }
-    }
-
-    loadLimitedList(startIndex, endIndex);
-    _isLoading = false;
-  }
-
-  int getStartForLimitedList(int position) {
-    int startIndex = position - loadIncrement;
-    if (startIndex < 0) {
-      startIndex = 0;
-    }
-    return startIndex;
-  }
-
-  int getEndForLimitedList(int position, int listLength) {
-    int endIndex = position + loadIncrement;
-    if (endIndex > listLength) {
-      endIndex = listLength;
-    }
-    return endIndex;
+    itemTree[_sortString] = ListHistory(
+        items: itemList,
+        quickSort: tempQuickSort,
+        chronologicalQuickSort: tempChronologicalQuickSort);
   }
 
   void setFavorite(int songId, bool newFavorite) {
     sorter.setFavorite(songId, newFavorite);
     if (_sortString == sortFavorites) {
       loadFavoriteSongs();
+    }
+  }
+
+  void setPlayingSongIndex() {
+    if (_currentQueueIndex != -1) {
+      _playingSongIndex = _limitedSongIds.indexOf(_queue[_currentQueueIndex]);
     }
   }
 
@@ -490,22 +461,31 @@ class MusicProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> addSongToPlaylist(int playlistIndex, int songIndex) async {
+  Future<bool> addSongToPlaylist(int playlistIndex, int songId) async {
     bool exists = true;
     // Implement for other sort strings
-    if (isSongList()) {
-      int id = _limitedSongIds[songIndex];
-      String name = _playlists[playlistIndex];
-      bool exists = await sorter.addSongToPlaylist(name, id);
-      if (!exists) {
-        // Show message saying song has been added
-      }
-    }
+    String name = _playlists.elementAt(playlistIndex);
+    exists = await sorter.addSongToPlaylist(name, songId);
     return exists;
   }
 
+  Future<void> addSongsToPlaylist(int playlistIndex, String item) async {
+    // Implement for other sort strings
+    String name = _playlists.elementAt(playlistIndex);
+
+    Map<String, String> selectedItemsNew = {};
+    selectedItemsNew.addAll(selectedItems);
+    selectedItemsNew[_sortString] = item;
+    List<int> songIdsToAdd = await sorter.getSongsWithFilter(
+        sortOrder, searchStrings, selectedItemsNew);
+
+    for (int songId in songIdsToAdd) {
+      await sorter.addSongToPlaylist(name, songId);
+    }
+  }
+
   Song getSongFromId(int id) {
-    return sorter.allSongs[id]!;
+    return _allSongs[id]!;
   }
 
   void safeNotify() {
@@ -531,7 +511,7 @@ class MusicProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void playNextSong() async {
+  void skipToNext() {
     if (audioHandler.playerIsReady()) {
       if (_repeat == 2) {
         if (_isPlaying) {
@@ -539,30 +519,58 @@ class MusicProvider extends ChangeNotifier {
         }
       } else {
         if (_currentQueueIndex < _queue.length - 1) {
-          _currentQueueIndex++;
-          _playingSongIndex++;
-          manualQueue.remove(_queue[_currentQueueIndex]);
+          if (!_isPlaying) {
+            setToNextSong();
+          }
           audioHandler.seekToNext();
         } else if (_repeat == 1) {
-          _currentQueueIndex = 0;
           audioHandler.restartPlaylist();
           audioHandler.play();
         } else {
-          _currentQueueIndex = -1;
           audioHandler.restartPlaylist();
         }
       }
     }
   }
 
-  void playPreviousSong() async {
+  void skipToPrevious() {
     if (audioHandler.playerIsReady()) {
       if (_currentDuration.inSeconds > 2 || _currentQueueIndex == 0) {
         audioHandler.seek(Duration.zero);
       } else {
+        if (!_isPlaying) {
+          setToPreviousSong();
+        }
+        audioHandler.seekToPrevious();
+      }
+    }
+  }
+
+  void setToNextSong() async {
+    if (audioHandler.playerIsReady()) {
+      if (_repeat != 2) {
+        print("setToNextSong::_currentQueueIndex: $_currentQueueIndex");
+        if (_currentQueueIndex < _queue.length - 1) {
+          _currentQueueIndex++;
+          _playingSongIndex++;
+          manualQueue.remove(_queue[_currentQueueIndex]);
+        } else if (_repeat == 1) {
+          _currentQueueIndex = 0;
+        } else {
+          _currentQueueIndex = -1;
+        }
+      }
+    }
+    print("setToNextSong::_currentQueueIndex: $_currentQueueIndex");
+  }
+
+  void setToPreviousSong() async {
+    if (audioHandler.playerIsReady()) {
+      if (_currentDuration.inSeconds > 2 || _currentQueueIndex == 0) {
+      } else {
+        print("setToPreviousSong::_currentQueueIndex: $_currentQueueIndex");
         _currentQueueIndex--;
         _playingSongIndex--;
-        audioHandler.seekToPrevious();
       }
     }
   }
@@ -593,12 +601,6 @@ class MusicProvider extends ChangeNotifier {
   Song getCurrentSong() {
     int songId = _queue[_currentQueueIndex];
     return getSongFromId(songId);
-  }
-
-  // Queue
-  set currentQueueIndex(int currentQueueIndex) {
-    _currentQueueIndex = currentQueueIndex;
-    notifyListeners();
   }
 
   void startQueue(int currentSongIndex) async {
@@ -654,6 +656,13 @@ class MusicProvider extends ChangeNotifier {
     audioHandler.addToPlaylistAtIndex(songIds, position);
 
     _queue.insertAll(position, songIds);
+  }
+
+  void playSongFromQueue(int queueIndex) {
+    print("playSongFromQueue::queueIndex: $queueIndex");
+    _currentQueueIndex = queueIndex;
+    notifyListeners();
+    audioHandler.addToPlaylistFromQueue(queueIndex);
   }
 
   void shuffleQueue() async {

@@ -24,6 +24,7 @@ class AudioHandler extends BaseAudioHandler {
   final AudioPlayer _audioPlayer = AudioPlayer();
   final ConcatenatingAudioSource _playlist =
       ConcatenatingAudioSource(useLazyPreparation: true, children: []);
+  int lastIndex = -1;
   int playlistLimit = 100;
 
   AudioHandler(this.musicProvider) {
@@ -35,6 +36,22 @@ class AudioHandler extends BaseAudioHandler {
   Future<void> _loadEmptyPlaylist() async {
     try {
       await _audioPlayer.setAudioSource(_playlist);
+
+      _audioPlayer.currentIndexStream.listen((currentIndex) {
+        final bool isPlaying = _audioPlayer.playing;
+        print("_loadEmptyPlaylist::currentIndexStream:isPlaying: $isPlaying");
+        print(
+            "_loadEmptyPlaylist::currentIndexStream:currentIndex: $currentIndex");
+        print("_loadEmptyPlaylist::currentIndexStream:lastIndex: $lastIndex");
+        if (currentIndex != null && isPlaying) {
+          if (lastIndex < currentIndex) {
+            musicProvider.setToNextSong();
+          } else {
+            musicProvider.setToPreviousSong();
+          }
+          lastIndex = currentIndex;
+        }
+      });
     } catch (e) {
       print("Error: $e");
     }
@@ -85,6 +102,14 @@ class AudioHandler extends BaseAudioHandler {
       playbackState.add(playbackState.value.copyWith(
         processingState: _mapProcessingState(_audioPlayer.processingState),
       ));
+    });
+
+    _audioPlayer.processingStateStream.listen((state) {
+      if (state == ProcessingState.completed || state == ProcessingState.idle) {
+        if (!_audioPlayer.playing) {
+          pause();
+        }
+      }
     });
   }
 
@@ -140,8 +165,10 @@ class AudioHandler extends BaseAudioHandler {
   bool playerIsReady() {
     if (_audioPlayer.processingState == ProcessingState.idle ||
         _audioPlayer.processingState == ProcessingState.ready) {
+      print("player is ready");
       return true;
     }
+    print("player is not ready");
     return false;
   }
 
@@ -190,12 +217,12 @@ class AudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> skipToNext() async {
-    musicProvider.playNextSong();
+    musicProvider.skipToNext();
   }
 
   @override
   Future<void> skipToPrevious() async {
-    musicProvider.playPreviousSong();
+    musicProvider.skipToPrevious();
   }
 
   void seekToNext() async {
@@ -206,7 +233,8 @@ class AudioHandler extends BaseAudioHandler {
       if (_audioPlayer.hasNext) {
         await _audioPlayer.seekToNext();
       } else {
-        addToPlaylistFromQueue();
+        int currentQueueIndex = musicProvider.currentQueueIndex + 1;
+        addToPlaylistFromQueue(currentQueueIndex);
       }
     }
   }
@@ -219,7 +247,8 @@ class AudioHandler extends BaseAudioHandler {
       if (_audioPlayer.hasPrevious) {
         await _audioPlayer.seekToPrevious();
       } else {
-        addToPlaylistFromQueue();
+        int currentQueueIndex = musicProvider.currentQueueIndex - 1;
+        addToPlaylistFromQueue(currentQueueIndex);
       }
     }
   }
@@ -261,7 +290,7 @@ class AudioHandler extends BaseAudioHandler {
         break;
       }
       Song song = musicProvider.getSongFromId(songId);
-      print("addToPlaylist::songTitle: " + song.title);
+      //print("addToPlaylist::songTitle: " + song.title);
       _playlist.add(AudioSource.uri(Uri.file(song.source)));
     }
   }
@@ -276,8 +305,7 @@ class AudioHandler extends BaseAudioHandler {
     }
   }
 
-  void addToPlaylistFromQueue() async {
-    int currentQueueIndex = musicProvider.currentQueueIndex;
+  void addToPlaylistFromQueue(int currentQueueIndex) async {
     List<int> queue = musicProvider.queue;
 
     await restartPlaylist();
@@ -290,16 +318,16 @@ class AudioHandler extends BaseAudioHandler {
           ? queue.length - 1
           : currentQueueIndex + increment;
       List<int> songIds = queue.sublist(startIndex, endIndex);
+
+      //print("addToPlaylistFromQueue::startIndex: $startIndex");
+      //print("addToPlaylistFromQueue::endIndex: $endIndex");
+      //print("addToPlaylistFromQueue::songIds: $songIds");
       addToPlaylist(songIds);
-      int playerIndex =
-          increment >= _playlist.length ? _playlist.length : increment;
+      int playerIndex = getPlayerIndex(currentQueueIndex, increment);
       print("addToPlaylistFromQueue::playerIndex: $playerIndex");
       await _audioPlayer.seek(Duration.zero, index: playerIndex);
-      setMediaItemToCurrentSong();
       if (musicProvider.isPlaying) {
         await play();
-      } else {
-        musicProvider.isPlaying = false;
       }
     }
   }
@@ -313,5 +341,16 @@ class AudioHandler extends BaseAudioHandler {
     if (_playlist.length > 0) {
       _playlist.clear();
     }
+  }
+
+  int getPlayerIndex(int currentQueueIndex, int increment) {
+    int playerIndex = currentQueueIndex;
+    if (increment >= _playlist.length) {
+      playerIndex = _playlist.length;
+    } else if (playerIndex > increment) {
+      playerIndex = increment;
+    }
+
+    return playerIndex;
   }
 }

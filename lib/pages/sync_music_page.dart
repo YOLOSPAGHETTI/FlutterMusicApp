@@ -3,25 +3,15 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:music_app/models/file_helper.dart';
 import 'package:music_app/models/music_builder.dart';
+import 'package:music_app/models/music_provider.dart';
 import 'package:music_app/models/song.dart';
 import 'package:music_app/pages/home_page.dart';
+import 'package:provider/provider.dart';
 
 class SyncMusicPage extends StatefulWidget {
-  final List<String> artistDelimiters;
-  final List<String> genreDelimiters;
-  final List<String> songContainers;
-  final List<String> artistContainers;
-  final Map<String, List<String>> songIgnoreText;
-  final Map<String, List<String>> artistIgnoreText;
-
-  const SyncMusicPage(
-      {super.key,
-      required this.artistDelimiters,
-      required this.genreDelimiters,
-      required this.songContainers,
-      required this.artistContainers,
-      required this.songIgnoreText,
-      required this.artistIgnoreText});
+  const SyncMusicPage({
+    super.key,
+  });
 
   @override
   State<SyncMusicPage> createState() => _SyncMusicPageState();
@@ -46,8 +36,12 @@ class _SyncMusicPageState extends State<SyncMusicPage> {
   }
 
   void syncMusic() async {
-    fileHelper = FileHelper(updateProgress);
-    musicBuilder = MusicBuilder(updateProgress);
+    fileHelper = FileHelper();
+    fileHelper.setProgressFunction(updateProgress);
+    MusicProvider musicProvider =
+        Provider.of<MusicProvider>(context, listen: false);
+    musicBuilder = MusicBuilder(musicProvider);
+    musicBuilder.setProgressFunction(updateProgress);
 
     List<File> musicFiles = await fileHelper.getMusicFiles();
     setState(() {
@@ -58,13 +52,6 @@ class _SyncMusicPageState extends State<SyncMusicPage> {
       currentAction = "Populating database";
     });
     await musicBuilder.rebuildDb();
-    musicBuilder.populateConfigurationSettings(
-        widget.artistDelimiters,
-        widget.genreDelimiters,
-        widget.songContainers,
-        widget.artistContainers,
-        widget.songIgnoreText,
-        widget.artistIgnoreText);
     await musicBuilder.populateDatabase(songs);
 
     if (mounted) {

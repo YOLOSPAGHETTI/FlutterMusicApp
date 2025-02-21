@@ -1,3 +1,4 @@
+import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -9,9 +10,13 @@ class FileHelper {
   int currentFile = 0;
   double progress = 0;
 
-  final Function(double) onProgressUpdate;
+  Function(double)? onProgressUpdate;
 
-  FileHelper(this.onProgressUpdate);
+  FileHelper();
+
+  void setProgressFunction(Function(double) onProgressUpdate) {
+    this.onProgressUpdate = onProgressUpdate;
+  }
 
   Future<List<File>> getMusicFiles() async {
     final List<File> musicFiles = <File>[];
@@ -23,17 +28,26 @@ class FileHelper {
   }
 
   Future<List<Song>> getSongsFromFiles(List<File> musicFiles) async {
-    List<Song> songs = <Song>[];
+    List<Future<Song>> songFutures = []; // Store future tasks
+
     int totalFiles = musicFiles.length;
     currentFile = 0;
     progress = 0;
+
     for (File file in musicFiles) {
-      songs.add(await fileToSong(file));
-      currentFile++;
-      progress = currentFile / totalFiles;
-      onProgressUpdate(progress);
+      // Process all files concurrently
+      songFutures.add(fileToSong(file).then((song) {
+        currentFile++;
+        progress = currentFile / totalFiles;
+        onProgressUpdate?.call(progress);
+        return song;
+      }));
     }
+
+    // Wait for all songs to be processed in parallel
+    List<Song> songs = await Future.wait(songFutures);
     print("Done converting songs");
+
     return songs;
   }
 
@@ -88,6 +102,33 @@ class FileHelper {
     return song;
   }
 
+  void updateFileTags(Song song) {
+    String source = song.source;
+    Tag tag = Tag(
+        title: song.title,
+        trackArtist: song.artist,
+        album: song.album,
+        albumArtist: song.albumArtist,
+        genre: song.genre,
+        year: int.parse(song.year),
+        trackNumber: song.trackNumber,
+        trackTotal: song.totalTrackCount,
+        pictures: [
+          Picture(
+              bytes: song.albumArt,
+              mimeType: null,
+              pictureType: PictureType.other)
+        ]);
+
+    try {
+      print("updateFileTags::source: $source");
+      AudioTags.write(source, tag);
+    } catch (e) {
+      print(e.toString());
+    }
+    print("updateFileTags:: completed");
+  }
+
   Future<void> _searchFiles(Directory dir, List<File> musicFiles) async {
     try {
       final entities = dir.listSync(recursive: false, followLinks: false);
@@ -99,7 +140,9 @@ class FileHelper {
           }
           currentFile++;
           progress = (currentFile / 100000).clamp(0, 1);
-          onProgressUpdate(progress);
+          if (onProgressUpdate != null) {
+            onProgressUpdate!(progress);
+          }
         } else if (entity is Directory) {
           await _searchFiles(entity, musicFiles); // Recursive search
         }

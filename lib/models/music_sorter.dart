@@ -12,66 +12,95 @@ import 'package:music_app/models/song.dart';
 
 class MusicSorter {
   DatabaseHelper db = DatabaseHelper();
-  Map<int, Song> allSongs = {};
-  bool allSongsPopulated = false;
   late SettingsProvider settingsProvider;
 
   void populateSongsFromDatabaseResults(
       List<Map<String, Object?>> results, MusicProvider provider) async {
+    bool allSongsPopulated = true;
+    if (provider.allSongs.isEmpty) {
+      allSongsPopulated = false;
+    }
     for (Map<String, Object?> row in results) {
-      int id = row[columnId] as int;
-      String title = row[columnTitle].toString();
-      String album = row[columnAlbum].toString();
-      String artist = row[columnArtist].toString();
-      String albumArtist = row[columnAlbumArtist].toString();
-      String genre = row[columnGenre].toString();
-      String year = row[columnYear].toString();
-      String source = row[columnSource].toString();
-      int trackNumber = row[columnTrackNumber] as int;
-      int totalTrackCount = row[columnTotalTrackCount] as int;
-      int duration = row[columnDuration] as int;
-
-      int favoriteInt =
-          row[columnFavorite] == null ? 0 : row[columnFavorite] as int;
-      bool favorite = favoriteInt == 1 ? true : false;
-
-      DateFormat format = DateFormat("dd-MMM-yyyy");
-      DateTime modifiedDate = format.parse(row[columnModifiedDate].toString());
-
-      //Uint8List albumArt = await getAlbumArt(File(source));
-
-      Song song = Song(
-          id: id,
-          title: title,
-          artist: artist,
-          album: album,
-          albumArtist: albumArtist,
-          genre: genre,
-          year: year,
-          trackNumber: trackNumber,
-          totalTrackCount: totalTrackCount,
-          duration: duration,
-          modifiedDate: modifiedDate,
-          albumArt: Uint8List(0),
-          source: source,
-          favorite: favorite);
+      Song song = getSongFromRow(row);
 
       if (!allSongsPopulated) {
-        allSongs[id] = song;
+        provider.addSong(song.id, song);
       }
-      provider.addSong(song.id);
+      provider.addSongToList(song.id);
       //print(title);
     }
-    allSongsPopulated = true;
     //print("done loading songs");
-    loadAlbumArt();
   }
 
-  Future<void> loadAlbumArt() async {
-    Iterator<Song> iterator = allSongs.values.iterator;
+  void repopulateSong(MusicProvider provider, int songId) async {
+    String orderBy = getOrderBy(sortSongs, provider.sortOrder);
+    String query =
+        "SELECT $columnId, $columnTitle, $columnAlbum, $columnArtist, $columnAlbumArtist, $columnGenre, $columnYear, $columnSource, $columnTrackNumber, $columnTotalTrackCount, $columnDuration, $columnModifiedDate, $columnFavorite FROM $tableSongs AS S WHERE $columnId = ? ORDER BY $orderBy";
+    List<Map<String, Object?>> results =
+        await db.customQuery(query, [songId.toString()]);
+
+    Song song = getSongFromRow(results[0]);
+    provider.addSong(songId, song);
+  }
+
+  void populateAllSongsFromDatabaseResults(
+      List<Map<String, Object?>> results, MusicProvider provider) {
+    for (Map<String, Object?> row in results) {
+      Song song = getSongFromRow(row);
+
+      provider.addSong(song.id, song);
+      provider.addSongToList(song.id);
+      //print(title);
+    }
+    //print("done loading songs");
+  }
+
+  Song getSongFromRow(Map<String, Object?> row) {
+    int id = row[columnId] as int;
+    String title = row[columnTitle].toString();
+    String album = row[columnAlbum].toString();
+    String artist = row[columnArtist].toString();
+    String albumArtist = row[columnAlbumArtist].toString();
+    String genre = row[columnGenre].toString();
+    String year = row[columnYear].toString();
+    String source = row[columnSource].toString();
+    int trackNumber = row[columnTrackNumber] as int;
+    int totalTrackCount = row[columnTotalTrackCount] as int;
+    int duration = row[columnDuration] as int;
+
+    int favoriteInt =
+        row[columnFavorite] == null ? 0 : row[columnFavorite] as int;
+    bool favorite = favoriteInt == 1 ? true : false;
+
+    DateFormat format = DateFormat("dd-MMM-yyyy");
+    DateTime modifiedDate = format.parse(row[columnModifiedDate].toString());
+
+    Song song = Song(
+        id: id,
+        title: title,
+        artist: artist,
+        album: album,
+        albumArtist: albumArtist,
+        genre: genre,
+        year: year,
+        trackNumber: trackNumber,
+        totalTrackCount: totalTrackCount,
+        duration: duration,
+        modifiedDate: modifiedDate,
+        albumArt: Uint8List(0),
+        source: source,
+        favorite: favorite);
+
+    return song;
+  }
+
+  Future<void> loadAlbumArt(Map<int, Song> songs) async {
+    Iterator<Song> iterator = songs.values.iterator;
     while (iterator.moveNext()) {
       Song song = iterator.current;
-      song.albumArt = await getAlbumArt(File(song.source));
+      if (song.albumArt == Uint8List(0)) {
+        song.albumArt = await getAlbumArt(File(song.source));
+      }
     }
   }
 
@@ -86,9 +115,27 @@ class MusicSorter {
     return albumArt;
   }
 
-  Future<void> populateSongs(MusicProvider provider) async {
-    print(allSongs.isEmpty);
-    if (allSongs.isEmpty) {
+  Future<void> populateFirstSongs(MusicProvider provider) async {
+    Map<int, Song> songs = provider.allSongs;
+    if (songs.isEmpty) {
+      String orderBy = getOrderBy(sortSongs, provider.sortOrder);
+      String query =
+          "SELECT $columnId, $columnTitle, $columnAlbum, $columnArtist, $columnAlbumArtist, $columnGenre, $columnYear, $columnSource, $columnTrackNumber, $columnTotalTrackCount, $columnDuration, $columnModifiedDate, $columnFavorite FROM $tableSongs AS S ORDER BY $orderBy LIMIT $loadIncrement";
+      List<Map<String, Object?>> results = await db.customQuery(query, []);
+
+      populateSongsFromDatabaseResults(results, provider);
+    } else {
+      Iterator<Song> iterator = songs.values.iterator;
+      while (iterator.moveNext()) {
+        Song song = iterator.current;
+        provider.addSongToList(song.id);
+      }
+    }
+  }
+
+  Future<void> populateAllSongs(MusicProvider provider) async {
+    Map<int, Song> songs = provider.allSongs;
+    if (songs.length == loadIncrement) {
       List<String> projection = [
         columnId,
         columnTitle,
@@ -113,12 +160,12 @@ class MusicSorter {
           selectionArgs,
           orderBy);
 
-      populateSongsFromDatabaseResults(results, provider);
+      populateAllSongsFromDatabaseResults(results, provider);
     } else {
-      Iterator<Song> iterator = allSongs.values.iterator;
+      Iterator<Song> iterator = songs.values.iterator;
       while (iterator.moveNext()) {
         Song song = iterator.current;
-        provider.addSong(song.id);
+        provider.addSongToList(song.id);
       }
     }
   }
@@ -134,9 +181,8 @@ class MusicSorter {
       int id = row[columnId] as int;
       //String title = row[columnTitle].toString();
       //print(title);
-      if (allSongs[id] != null) {
-        provider.addSong(id);
-      }
+      provider.addSongToList(id);
+
       String year = row[columnYear].toString();
       if (year != undefinedTag && !yearsToFirstItem.containsKey(year)) {
         yearsToFirstItem[year] = id.toString();
@@ -182,9 +228,7 @@ class MusicSorter {
     List<Map<String, Object?>> results = await db.customQuery(query, []);
     for (Map<String, Object?> row in results) {
       int id = row[columnId] as int;
-      if (allSongs[id] != null) {
-        provider.addSong(id);
-      }
+      provider.addSongToList(id);
     }
   }
 
@@ -193,7 +237,7 @@ class MusicSorter {
     for (Map<String, Object?> row in results) {
       String itemName = row[projection].toString();
 
-      provider.addItem(itemName);
+      provider.addItemToList(itemName);
       //print(itemName);
     }
   }
@@ -222,10 +266,10 @@ class MusicSorter {
       if (sortString == sortDecades) {
         String item = row[columnYear].toString();
         String decade = item == undefinedTag ? item : getDecadeFromYear(item);
-        provider.addItem(decade);
+        provider.addItemToList(decade);
       } else {
         String item = row[sortToColumn[sortString]].toString();
-        provider.addItem(item);
+        provider.addItemToList(item);
         if (sortString == sortAlbums || sortString == sortYears) {
           String year = row[columnYear].toString();
           if (year != undefinedTag && !yearsToFirstItem.containsKey(year)) {
@@ -254,14 +298,14 @@ class MusicSorter {
       MusicProvider provider, Map<String, String> yearsToFirstItem) {
     String orderType = provider.orderType;
     Map<String, String> chronologicalQuickSort = {};
-    print("populateChronologicalQuickSort::orderType: $orderType");
+    //print("populateChronologicalQuickSort::orderType: $orderType");
     if (orderType != orderAlphabetically) {
-      print(
-          "populateChronologicalQuickSort::yearsToFirstItem: $yearsToFirstItem");
+      /*print(
+          "populateChronologicalQuickSort::yearsToFirstItem: $yearsToFirstItem");*/
       if (yearsToFirstItem.length > quickSortMinimumLimit) {
         List<String> years = yearsToFirstItem.keys.toList();
         LinkedHashSet<String> decades = getDecadesFromYears(years);
-        print("populateChronologicalQuickSort::decades: $decades");
+        //print("populateChronologicalQuickSort::decades: $decades");
         if (decades.length > quickSortMinimumLimit) {
           for (String decade in decades) {
             List<String> yearsInDecade = years.where((item) {
@@ -275,8 +319,8 @@ class MusicSorter {
         }
       }
     }
-    print(
-        "populateChronologicalQuickSort::chronologicalQuickSort: $chronologicalQuickSort");
+    /*print(
+        "populateChronologicalQuickSort::chronologicalQuickSort: $chronologicalQuickSort");*/
     provider.chronologicalQuickSort = chronologicalQuickSort;
   }
 
@@ -346,13 +390,13 @@ class MusicSorter {
     }).toList();
   }
 
-  List<int> searchSongs(List<int> list, String query) {
+  List<int> searchSongs(List<int> list, String query, Map<int, Song> songs) {
     // Clean the query as well
     String cleanedQuery = cleanString(query);
 
     // Filter the list and return only the matches (case-insensitive and ignoring "The " and "A ").
     return list.where((id) {
-      return cleanString(allSongs[id]!.title).contains(cleanedQuery);
+      return cleanString(songs[id]!.title).contains(cleanedQuery);
     }).toList();
   }
 

@@ -10,15 +10,13 @@ class MusicParser {
 
   List<String> getArtists(
       List<String> delimiters,
-      List<String> songContainers,
       Map<String, List<String>> songContainerIgnore,
-      List<String> artistContainers,
       Map<String, List<String>> artistContainerIgnore) {
     List<String> artists = <String>[];
 
     if (songText.isNotEmpty) {
-      artists.addAll(getArtistsFromContainer(
-          songText, delimiters, songContainers, songContainerIgnore));
+      artists.addAll(
+          getArtistsFromContainer(songText, delimiters, songContainerIgnore));
       //print("getArtists::getArtistsFromContainer: $artists");
     }
 
@@ -26,7 +24,7 @@ class MusicParser {
       artists.addAll(splitByDelimiters(artistText, delimiters));
       //print("getArtists::splitByDelims: $artists");
       artists.addAll(getArtistsFromContainer(
-          artistText, delimiters, artistContainers, artistContainerIgnore));
+          artistText, delimiters, artistContainerIgnore));
     }
 
     return artists;
@@ -56,11 +54,11 @@ class MusicParser {
   }
 
   List<String> getArtistsFromContainer(String text, List<String> delimiters,
-      List<String> containers, Map<String, List<String>> textIgnore) {
+      Map<String, List<String>> textIgnore) {
     List<String> artistsFromContainer = <String>[];
     List<String> artists = <String>[];
 
-    for (String container in containers) {
+    for (String container in textIgnore.keys) {
       String open = RegExp.escape(container[0]);
       String close = RegExp.escape(container[1]);
       String regexString = '$open([^)]+)$close';
@@ -72,9 +70,11 @@ class MusicParser {
       for (String item in items) {
         List<String> ignoreList = textIgnore[container]!;
         for (String ignore in ignoreList) {
-          String artist = item.replaceAll(ignore, "");
-          if (artist.isNotEmpty) {
-            artistsFromContainer.add(artist);
+          if (text.contains(ignore)) {
+            String artist = item.replaceAll(ignore, "");
+            if (artist.isNotEmpty) {
+              artistsFromContainer.add(artist);
+            }
           }
         }
       }

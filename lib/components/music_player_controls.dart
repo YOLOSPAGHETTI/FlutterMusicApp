@@ -1,5 +1,3 @@
-import 'dart:collection';
-
 import 'package:flutter/material.dart';
 import 'package:music_app/components/text_marquee.dart';
 import 'package:music_app/models/music_provider.dart';
@@ -73,7 +71,7 @@ class MusicPlayerControls extends StatelessWidget {
           ])),
       const SizedBox(width: 10),
       GestureDetector(
-        onTap: musicProvider.playPreviousSong,
+        onTap: musicProvider.skipToPrevious,
         child: Icon(
           Icons.skip_previous,
           color: Theme.of(context).colorScheme.secondary,
@@ -89,7 +87,7 @@ class MusicPlayerControls extends StatelessWidget {
         ),
       ),
       GestureDetector(
-        onTap: musicProvider.playNextSong,
+        onTap: musicProvider.skipToNext,
         child: Icon(
           Icons.skip_next,
           color: Theme.of(context).colorScheme.secondary,

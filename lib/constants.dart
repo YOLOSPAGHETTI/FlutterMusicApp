@@ -2,6 +2,9 @@
 final double listTileHeight = 70;
 final double listFieldHeight = 70;
 
+// Lazy List
+final int loadIncrement = 100;
+
 // Data
 const String undefinedTag = "<UNDEFINED>";
 
@@ -79,6 +82,10 @@ const Map<String, String> sortToColumn = {
 };
 
 // Settings
+const String settingTheme = "theme";
+const String settingLightMode = "lightMode";
+const String settingDarkMode = "darkMode";
+
 const String settingHideSongsWithEmptyTitle = "hideSongsWithEmptyTitle";
 const String settingHideSongsWithEmptyArtist = "hideSongsWithEmptyArtist";
 const String settingHideSongsWithEmptyAlbum = "hideSongsWithEmptyAlbum";
@@ -88,9 +95,9 @@ const String settingIgnoreThe = "ignoreThe";
 const String settingIgnoreA = "ignoreA";
 const String settingViewArtistWithAlbum = "viewArtistWithAlbum";
 const String settingViewYearWithAlbum = "viewYearWithAlbum";
-const String settingSongSortOrder = "songSortOrder";
-const String settingAlbumSortOrder = "albumSortOrder";
-const String settingYearSortOrder = "yearSortOrder";
+const String settingSongOrderType = "songOrderType";
+const String settingAlbumOrderType = "albumOrderType";
+const String settingYearOrderType = "yearOrderType";
 
 // Order Types
 const String orderAlphabetically = "Alphabetically";
@@ -111,6 +118,8 @@ const String sortFavorites = "Favorites";
 const String sortPlaylists = "Playlists";
 
 // DB
+final int bulkInsertSize = 100;
+
 // Table and column names
 // Songs
 const String tableSongs = 'Songs';

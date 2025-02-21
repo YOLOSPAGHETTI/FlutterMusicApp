@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:music_app/components/add_playlist_button.dart';
+import 'package:music_app/components/add_to_playlist_menu_item.dart';
 import 'package:music_app/components/music_player_controls.dart';
 import 'package:music_app/components/music_player_drawer.dart';
 import 'package:music_app/components/quick_sort_sidebar.dart';
@@ -10,6 +11,7 @@ import 'package:music_app/constants.dart';
 import 'package:music_app/models/database_helper.dart';
 import 'package:music_app/models/music_provider.dart';
 import 'package:music_app/pages/check_permissions_page.dart';
+import 'package:music_app/pages/edit_details_page.dart';
 import 'package:provider/provider.dart';
 
 class HomePage extends StatefulWidget {
@@ -53,6 +55,10 @@ class _HomePageState extends State<HomePage> {
 
   void goToCheckPermissionPage() async {
     await setDatabasePopulated();
+    /*if (dbPopulated) {
+      DatabaseHelper db = DatabaseHelper();
+      db.dropTables();
+    }*/
     if (!dbPopulated) {
       if (mounted) {
         Navigator.push(
@@ -92,23 +98,19 @@ class _HomePageState extends State<HomePage> {
     double position = _scrollController.position.pixels;
     double end = _scrollController.position.maxScrollExtent;
 
-    if (!musicProvider.isLoading) {
-      if (position > end - scrollOffset) {
-        musicProvider.appendToLimitedList(true);
-      } else if (position < scrollOffset &&
-          musicProvider.firstLoadedIndex > 0) {
-        musicProvider.appendToLimitedList(false);
+    if (position >= end - scrollOffset) {
+      musicProvider.appendToLimitedList(true);
+    } else if (position < scrollOffset && !musicProvider.atTopOfList()) {
+      musicProvider.appendToLimitedList(false);
 
-        double jump = musicProvider.loadIncrement * listTileHeight;
-        end = _scrollController.position.maxScrollExtent;
-        //print("onScroll::position: $end");
-        //print("onScroll::jump: $jump");
-        if (end > position + jump) {
-          jumpOffset = position + jump + scrollOffset;
-          _scrollController.jumpTo(jumpOffset);
-          //print("onScroll::currentVelocity1: $_currentVelocity");
-          continueScrolling(_currentVelocity);
-        }
+      double jump = loadIncrement * listTileHeight;
+      //print("onScroll::position: $end");
+      //print("onScroll::jump: $jump");
+      if (end > position + jump) {
+        jumpOffset = position + jump + scrollOffset;
+        _scrollController.jumpTo(jumpOffset);
+        //print("onScroll::currentVelocity1: $_currentVelocity");
+        continueScrolling(_currentVelocity);
       }
     }
 
@@ -118,7 +120,7 @@ class _HomePageState extends State<HomePage> {
       // Calculate scroll velocity based on position change
       double newOffset = _scrollController.offset;
       //print("onScroll::currentVelocity2: $_currentVelocity");
-      if (newOffset != jumpOffset && !musicProvider.isLoading) {
+      if (newOffset != jumpOffset) {
         _currentVelocity = newOffset - oldScrollOffset;
         oldScrollOffset = newOffset;
       }
@@ -266,69 +268,46 @@ class _HomePageState extends State<HomePage> {
                                 menuItems.add(
                                   PopupMenuItem<String>(
                                     value: 'queue',
-                                    child: Text('Queue'),
+                                    child: Text('Add To Queue'),
                                     onTap: () {
                                       value.addToQueue(index);
                                     },
                                   ),
                                 );
 
-                                menuItems.add(
-                                  PopupMenuItem<String>(
-                                    value: 'playlist',
-                                    child: Text('Add To Playlist'),
-                                    onTap: () {
-                                      List<String> playlists = value.playlists;
-                                      longPressIndex = index;
-                                      showDialog(
-                                        context: context,
-                                        builder: (BuildContext context) {
-                                          return AlertDialog(
-                                            title: Text("Add To Playlist",
-                                                style: TextStyle(
-                                                    color: Theme.of(context)
-                                                        .colorScheme
-                                                        .tertiary)),
-                                            content: ListView.builder(
-                                                itemCount: playlists.length,
-                                                itemBuilder: (context, index) {
-                                                  return ListTile(
-                                                      title: TextMarquee(
-                                                        text: playlists[index],
-                                                        style: TextStyle(),
-                                                        maxWidth: 250,
-                                                      ),
-                                                      onTap: () {
-                                                        value.addSongToPlaylist(
-                                                            index,
-                                                            longPressIndex);
-                                                        Navigator.of(context)
-                                                            .pop();
-                                                      });
-                                                }),
-                                            actions: [
-                                              TextButton(
-                                                onPressed: () {
-                                                  Navigator.of(context)
-                                                      .pop(); // Close the dialog
-                                                },
-                                                child: Text('Close'),
-                                              ),
-                                            ],
-                                          );
-                                        },
-                                      );
-                                    },
-                                  ),
-                                );
+                                // Implement for lists that don't just include songs
+                                if (value.isSongList()) {
+                                  menuItems.add(
+                                    AddToPlaylistMenuItem(
+                                        musicProvider: value,
+                                        isSong: true,
+                                        listItem: songIds[index].toString()),
+                                  );
+                                } else {
+                                  menuItems.add(
+                                    AddToPlaylistMenuItem(
+                                        musicProvider: value,
+                                        isSong: false,
+                                        listItem: items[index]),
+                                  );
+                                }
 
                                 // Implement
                                 if (value.isSongList()) {
                                   menuItems.add(
                                     PopupMenuItem<String>(
                                       value: 'details',
-                                      child: Text('Details'),
-                                      onTap: () {},
+                                      child: Text('Edit Details'),
+                                      onTap: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                              builder: (context) =>
+                                                  EditDetailsPage(
+                                                      musicProvider: value,
+                                                      songId: songIds[index])),
+                                        );
+                                      },
                                     ),
                                   );
                                 }
@@ -376,6 +355,8 @@ class _HomePageState extends State<HomePage> {
                                   );
                                 }
 
+                                print("build:: " + menuItems.toString());
+
                                 if (menuItems.isEmpty) return;
 
                                 final selectedValue = await showMenu<String>(
@@ -408,7 +389,9 @@ class _HomePageState extends State<HomePage> {
                                   style: TextStyle(
                                     color: value.playingSongIndex == index
                                         ? Theme.of(context).colorScheme.primary
-                                        : Colors.black,
+                                        : Theme.of(context)
+                                            .colorScheme
+                                            .tertiary,
                                   ),
                                   maxWidth: 250,
                                 ),
@@ -419,10 +402,13 @@ class _HomePageState extends State<HomePage> {
                                           .artist
                                       : "",
                                   style: TextStyle(
-                                    color: value.playingSongIndex == index
-                                        ? Theme.of(context).colorScheme.primary
-                                        : Colors.black,
-                                  ),
+                                      color: value.playingSongIndex == index
+                                          ? Theme.of(context)
+                                              .colorScheme
+                                              .primary
+                                          : Theme.of(context)
+                                              .colorScheme
+                                              .tertiary),
                                   maxWidth: 250,
                                 ),
                                 tileColor: value.playingSongIndex == index

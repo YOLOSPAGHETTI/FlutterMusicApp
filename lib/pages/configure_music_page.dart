@@ -3,8 +3,8 @@ import 'package:music_app/components/info_button_popup.dart';
 import 'package:music_app/components/music_player_controls.dart';
 import 'package:music_app/constants.dart';
 import 'package:music_app/components/text_field_list.dart';
-import 'package:music_app/models/database_helper.dart';
 import 'package:music_app/models/music_provider.dart';
+import 'package:music_app/models/settings_provider.dart';
 import 'package:music_app/pages/sync_music_page.dart';
 import 'package:provider/provider.dart';
 
@@ -36,25 +36,22 @@ class _ConfigureMusicPageState extends State<ConfigureMusicPage> {
 
     super.initState();
 
-    populatePageFromDatabase();
+    populatePage();
   }
 
-  void populatePageFromDatabase() async {
-    DatabaseHelper db = DatabaseHelper();
-    List<Map<String, Object?>> resultsSeparateField =
-        await db.customQuery("SELECT * FROM $tableSeparateFieldSettings", []);
-    List<Map<String, Object?>> resultsFieldContainer =
-        await db.customQuery("SELECT * FROM $tableFieldContainerSettings", []);
-
+  void populatePage() async {
+    final List<String> artistDelimiters = SettingsProvider().artistDelimiters;
+    final List<String> genreDelimiters = SettingsProvider().genreDelimiters;
+    final Map<String, List<String>> songIgnoreText =
+        SettingsProvider().songIgnoreText;
+    final Map<String, List<String>> artistIgnoreText =
+        SettingsProvider().artistIgnoreText;
     setState(() {
-      for (Map<String, Object?> row in resultsSeparateField) {
-        if (row[columnField].toString() == columnArtist) {
-          artistDelimiterControllers.add(
-              TextEditingController(text: row[columnDelimiter].toString()));
-        } else if (row[columnField] == columnGenre) {
-          genreDelimiterControllers.add(
-              TextEditingController(text: row[columnDelimiter].toString()));
-        }
+      for (String delimiter in artistDelimiters) {
+        artistDelimiterControllers.add(TextEditingController(text: delimiter));
+      }
+      for (String delimiter in genreDelimiters) {
+        genreDelimiterControllers.add(TextEditingController(text: delimiter));
       }
 
       if (artistDelimiterControllers.isEmpty) {
@@ -64,17 +61,23 @@ class _ConfigureMusicPageState extends State<ConfigureMusicPage> {
         genreDelimiterControllers.add(TextEditingController());
       }
 
-      for (Map<String, Object?> row in resultsFieldContainer) {
-        String container = row[columnContainer].toString();
-        if (row[columnField].toString() == columnTitle) {
-          if (!songContainers.contains(container)) {
-            songContainers.add(container);
-          }
-          songIgnoreControllers[container]!.add(
-              TextEditingController(text: row[columnIgnoreText].toString()));
-        } else if (row[columnField].toString() == columnArtist) {
-          artistIgnoreControllers[container]!.add(
-              TextEditingController(text: row[columnIgnoreText].toString()));
+      for (String container in songIgnoreText.keys) {
+        if (!songContainers.contains(container)) {
+          songContainers.add(container);
+        }
+        for (String text in songIgnoreText[container]!) {
+          songIgnoreControllers[container]!
+              .add(TextEditingController(text: text));
+        }
+      }
+
+      for (String container in artistIgnoreText.keys) {
+        if (!artistContainers.contains(container)) {
+          artistContainers.add(container);
+        }
+        for (String text in artistIgnoreText[container]!) {
+          artistIgnoreControllers[container]!
+              .add(TextEditingController(text: text));
         }
       }
 
@@ -134,13 +137,10 @@ class _ConfigureMusicPageState extends State<ConfigureMusicPage> {
         }
       }
 
-      return SyncMusicPage(
-          artistDelimiters: artistDelimiters,
-          genreDelimiters: genreDelimiters,
-          songContainers: songContainers,
-          artistContainers: artistContainers,
-          songIgnoreText: songIgnoreText,
-          artistIgnoreText: artistIgnoreText);
+      SettingsProvider().populateConfigSettings(
+          artistDelimiters, genreDelimiters, songIgnoreText, artistIgnoreText);
+
+      return SyncMusicPage();
     }));
   }
 

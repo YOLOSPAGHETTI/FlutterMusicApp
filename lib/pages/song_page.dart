@@ -197,7 +197,7 @@ class SongPage extends StatelessWidget {
                   Expanded(
                     child: IconButton(
                         onPressed: () {
-                          value.playPreviousSong();
+                          value.skipToPrevious();
                         },
                         icon: Icon(
                           Icons.skip_previous,
@@ -221,7 +221,7 @@ class SongPage extends StatelessWidget {
                   Expanded(
                     child: IconButton(
                       onPressed: () {
-                        value.playNextSong();
+                        value.skipToNext();
                       },
                       icon: Icon(
                         Icons.skip_next,

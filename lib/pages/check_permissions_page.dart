@@ -24,75 +24,105 @@ class _CheckPermissionsPageState extends State<CheckPermissionsPage> {
   Future<void> requestPermissions() async {
     if (Platform.isAndroid) {
       var androidInfo = await DeviceInfoPlugin().androidInfo;
-      if (androidInfo.version.sdkInt >= 33) {
-        // For Android 13+
-        PermissionStatus status = await Permission.audio.request();
-        addressPermissionStatus(status);
-        status = await Permission.photos.request();
-        addressPermissionStatus(status);
-        if (await Permission.audio.isGranted &&
-            await Permission.photos.isGranted) {
-          goToConfigureMusicPage();
-        }
-      } else if (androidInfo.version.sdkInt >= 30) {
-        // For Android 11+
-        PermissionStatus status =
-            await Permission.manageExternalStorage.request();
-        addressPermissionStatus(status);
-        if (await Permission.manageExternalStorage.isGranted) {
-          goToConfigureMusicPage();
-        }
-      } else {
-        // For older Android versions
-        PermissionStatus status = await Permission.storage.request();
-        addressPermissionStatus(status);
-        if (await Permission.storage.isGranted) {
-          goToConfigureMusicPage();
-        }
+      int sdkInt = androidInfo.version.sdkInt;
+
+      // Android 13+ (SDK 33+)
+      if (sdkInt >= 33) {
+        await requestAndroid13Permissions();
       }
+      // Android 11-12 (SDK 30-32)
+      else if (sdkInt >= 30) {
+        await requestAndroid11Permissions();
+      }
+      // Android 10 and below
+      else {
+        await requestOldAndroidPermissions();
+      }
+    } else {
+      // Handle iOS or other platforms if needed
     }
   }
 
-  Future<void> addressPermissionStatus(PermissionStatus status) async {
-    if (status.isPermanentlyDenied) {
-      showText = true;
-      // Open app settings for manual permission granting
-      await openAppSettings();
-    } else if (status.isDenied) {
-      // Inform the user why the permission is necessary
-      showText = true;
+  Future<void> requestAndroid13Permissions() async {
+    PermissionStatus audioStatus = await Permission.audio.request();
+    PermissionStatus mediaStatus = await Permission.photos.request();
+    PermissionStatus status = await Permission.manageExternalStorage.request();
+
+    if (audioStatus.isGranted && mediaStatus.isGranted && status.isGranted) {
+      goToConfigureMusicPage();
+    } else {
+      handlePermissionDenial();
     }
+  }
+
+  Future<void> requestAndroid11Permissions() async {
+    PermissionStatus status = await Permission.manageExternalStorage.request();
+
+    if (status.isGranted) {
+      goToConfigureMusicPage();
+    } else {
+      handlePermissionDenial();
+    }
+  }
+
+  Future<void> requestOldAndroidPermissions() async {
+    PermissionStatus storageStatus = await Permission.storage.request();
+
+    if (storageStatus.isGranted) {
+      goToConfigureMusicPage();
+    } else {
+      handlePermissionDenial();
+    }
+  }
+
+  void handlePermissionDenial() {
+    setState(() {
+      showText = true;
+    });
   }
 
   void goToConfigureMusicPage() {
-    Navigator.push(
+    Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-          builder: (context) => const ConfigureMusicPage(
-                firstConfigure: true,
-              )),
+        builder: (context) => const ConfigureMusicPage(firstConfigure: true),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        appBar: AppBar(title: const Text("Allow File Permissions")),
-        body: Container(
-          padding: const EdgeInsets.all(16),
-          margin: const EdgeInsets.all(25),
-          child: Column(
-            children: [
-              ElevatedButton(
-                  onPressed: requestPermissions,
-                  child: const Text("Request Permissions")),
-              Visibility(
-                  visible: showText,
-                  child: const Text(
-                      "Access to your files is needed to pull in your music library. Please hit the button above to give the needed permissions"))
-            ],
-          ),
-        ));
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      appBar: AppBar(title: const Text("Allow File Permissions")),
+      body: Container(
+        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.all(25),
+        child: Column(
+          children: [
+            ElevatedButton(
+              onPressed: requestPermissions,
+
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context)
+                      .colorScheme
+                      .primary), // Button background color
+              child: Text(
+                "Request Permissions",
+                style:
+                    TextStyle(color: Theme.of(context).colorScheme.secondary),
+              ),
+            ),
+            Visibility(
+              visible: showText,
+              child: const Text(
+                "Access to your files is needed to pull in your music library. "
+                "Please hit the button above to give the needed permissions.",
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
