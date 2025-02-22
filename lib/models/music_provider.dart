@@ -1,9 +1,11 @@
 import 'dart:collection';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:music_app/constants.dart';
 import 'package:music_app/models/audio_handler.dart';
+import 'package:music_app/models/file_helper.dart';
 import 'package:music_app/models/lazy_list.dart';
 import 'package:music_app/models/list_history.dart';
 import 'package:music_app/models/music_sorter.dart';
@@ -23,7 +25,7 @@ class MusicProvider extends ChangeNotifier {
   final LinkedHashSet<String> items = LinkedHashSet();
   final LazyList<String> _limitedItems = LazyList<String>();
   final Map<String, QuickSort> quickSortMap = {};
-  final LinkedHashSet<String> _playlists = LinkedHashSet();
+  final LinkedHashMap<String, bool> _playlists = LinkedHashMap();
   int _playingSongIndex = -1;
 
   // Sorting
@@ -54,7 +56,7 @@ class MusicProvider extends ChangeNotifier {
   List<int> get limitedSongIds => _limitedSongIds;
   List<int> get queue => _queue;
   List<String> get limitedItems => _limitedItems;
-  LinkedHashSet<String> get playlists => _playlists;
+  Map<String, bool> get playlists => _playlists;
   int get playingSongIndex => _playingSongIndex;
   Map<String, String> get chronologicalQuickSort => _chronologicalQuickSort;
 
@@ -94,11 +96,12 @@ class MusicProvider extends ChangeNotifier {
   // Loading
   void loadSongs() async {
     songIds.clear();
-    //print("loadSongs::_sortOrder: $_sortOrder");
     await sorter.populateFirstSongs(this);
     loadSongsFromList();
     await sorter.populateAllSongs(this);
-    sorter.loadAlbumArt(_allSongs);
+
+    FileHelper fileHelper = FileHelper();
+    fileHelper.loadAlbumArt(this);
     populateQuickSort();
   }
 
@@ -137,8 +140,8 @@ class MusicProvider extends ChangeNotifier {
     items.clear();
     safeNotify();
 
-    _playlists.addAll(await sorter.getPlaylists());
-    items.addAll(_playlists);
+    _playlists.addAll(await sorter.populatePlaylists());
+    items.addAll(_playlists.keys);
     loadItemsFromList();
     populateQuickSort();
     populateListHistory();
@@ -167,6 +170,10 @@ class MusicProvider extends ChangeNotifier {
   void loadItemsFromList() {
     _limitedItems.loadStart(items.toList());
     notifyListeners();
+  }
+
+  void setAlbumArtForSong(int songId, Uint8List albumArt) {
+    allSongs[songId]!.albumArt = albumArt;
   }
 
   void query(String query) {
@@ -244,8 +251,8 @@ class MusicProvider extends ChangeNotifier {
     return true;
   }
 
-  void getNextSort(int itemIndex) {
-    //print("getNextSort::sortString: $_sortString");
+  void getNextSort(int itemIndex) async {
+    print("getNextSort::sortString: $_sortString");
     // Get selected item
     String query = _limitedItems.elementAt(itemIndex);
     selectedItems[_sortString] = query;
@@ -255,6 +262,13 @@ class MusicProvider extends ChangeNotifier {
     itemTree[_sortString]!.endIndex = _limitedItems.lastLoadedIndex;
 
     //print("getNextSort::sortOrder: $_sortOrder");
+    if (_sortString == sortPlaylists) {
+      bool isSorted = await sorter.playlistIsSorted(query);
+      print("getNextSort::isSorted: $isSorted");
+      if (isSorted) {
+        await setSortForPlaylist(query);
+      }
+    }
     int sortIndex = _sortOrder.indexOf(_sortString);
     if (sortIndex + 1 < _sortOrder.length) {
       _sortString = _sortOrder[sortIndex + 1];
@@ -292,6 +306,16 @@ class MusicProvider extends ChangeNotifier {
       }
     }
     loadPageList();
+  }
+
+  Future<void> setSortForPlaylist(String name) async {
+    List<String> playlistSortOrder =
+        await sorter.getSortOrderFromPlaylistSort(name);
+    Map<String, String> playlistSearchStrings =
+        await sorter.getSearchStringsFromPlaylistSort(name);
+    _sortOrder.clear();
+    _sortOrder.addAll(playlistSortOrder);
+    _searchStrings.addAll(playlistSearchStrings);
   }
 
   void clearSortLists() {
@@ -439,16 +463,28 @@ class MusicProvider extends ChangeNotifier {
   }
 
   // Playlists
-  void getPlaylists() async {
-    _playlists.addAll(await sorter.getPlaylists());
+  void populatePlaylists() async {
+    _playlists.addAll(await sorter.populatePlaylists());
   }
 
-  Future<bool> addPlaylist(String name) async {
-    bool exists = await sorter.addPlaylist(name);
-    if (!exists) {
-      loadPlaylists();
+  List<String> getUnsortedPlaylists() {
+    List<String> unsortedPlaylists = <String>[];
+    for (String name in _playlists.keys) {
+      if (!_playlists[name]!) {
+        unsortedPlaylists.add(name);
+      }
     }
-    return exists;
+    return unsortedPlaylists;
+  }
+
+  Future<bool> playlistExists(String name) async {
+    return await sorter.playlistExists(name);
+  }
+
+  Future<void> addPlaylist(String name, bool isSorted) async {
+    await sorter.addPlaylist(name, isSorted);
+
+    loadPlaylists();
   }
 
   Future<void> deletePlaylist(int index) async {
@@ -464,14 +500,14 @@ class MusicProvider extends ChangeNotifier {
   Future<bool> addSongToPlaylist(int playlistIndex, int songId) async {
     bool exists = true;
     // Implement for other sort strings
-    String name = _playlists.elementAt(playlistIndex);
+    String name = _playlists.keys.elementAt(playlistIndex);
     exists = await sorter.addSongToPlaylist(name, songId);
     return exists;
   }
 
   Future<void> addSongsToPlaylist(int playlistIndex, String item) async {
     // Implement for other sort strings
-    String name = _playlists.elementAt(playlistIndex);
+    String name = _playlists.keys.elementAt(playlistIndex);
 
     Map<String, String> selectedItemsNew = {};
     selectedItemsNew.addAll(selectedItems);
@@ -482,6 +518,21 @@ class MusicProvider extends ChangeNotifier {
     for (int songId in songIdsToAdd) {
       await sorter.addSongToPlaylist(name, songId);
     }
+  }
+
+  Future<void> deleteSongFromPlaylist(int songIndex) async {
+    // Implement for other sort strings
+    String name = selectedItems[sortPlaylists]!;
+    int songId = _limitedSongIds[songIndex];
+    await sorter.deleteSongFromPlaylist(name, songId);
+
+    _limitedSongIds.removeAt(songIndex);
+    songIds.remove(songId);
+    notifyListeners();
+  }
+
+  Future<void> addPlaylistSort(String name) async {
+    await sorter.addPlaylistSort(name, _sortOrder, _searchStrings);
   }
 
   Song getSongFromId(int id) {

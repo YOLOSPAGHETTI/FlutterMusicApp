@@ -80,7 +80,7 @@ class _HomePageState extends State<HomePage> {
     await setDatabasePopulated();
     if (dbPopulated) {
       if (musicProvider.sortString == sortSongs) {
-        musicProvider.getPlaylists();
+        musicProvider.populatePlaylists();
         musicProvider.loadSongs();
       }
     }
@@ -350,6 +350,20 @@ class _HomePageState extends State<HomePage> {
                                             );
                                           },
                                         );
+                                      },
+                                    ),
+                                  );
+                                }
+
+                                if (value.sortOrder.length == 2 &&
+                                    value.sortString == sortSongs &&
+                                    value.sortOrder[0] == sortPlaylists) {
+                                  menuItems.add(
+                                    PopupMenuItem<String>(
+                                      value: 'remove',
+                                      child: Text('Remove'),
+                                      onTap: () {
+                                        value.deleteSongFromPlaylist(index);
                                       },
                                     ),
                                   );

@@ -51,7 +51,7 @@ class _SyncMusicPageState extends State<SyncMusicPage> {
     setState(() {
       currentAction = "Populating database";
     });
-    await musicBuilder.rebuildDb();
+    await musicBuilder.recreateMusicTables();
     await musicBuilder.populateDatabase(songs);
 
     if (mounted) {

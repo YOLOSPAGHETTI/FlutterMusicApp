@@ -1,8 +1,6 @@
 import 'dart:collection';
-import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:audiotags/audiotags.dart';
 import 'package:intl/intl.dart';
 import 'package:music_app/constants.dart';
 import 'package:music_app/models/database_helper.dart';
@@ -92,27 +90,6 @@ class MusicSorter {
         favorite: favorite);
 
     return song;
-  }
-
-  Future<void> loadAlbumArt(Map<int, Song> songs) async {
-    Iterator<Song> iterator = songs.values.iterator;
-    while (iterator.moveNext()) {
-      Song song = iterator.current;
-      if (song.albumArt == Uint8List(0)) {
-        song.albumArt = await getAlbumArt(File(song.source));
-      }
-    }
-  }
-
-  Future<Uint8List> getAlbumArt(File file) async {
-    Uint8List albumArt = Uint8List(0);
-    try {
-      Tag? tag = await AudioTags.read(file.path);
-      albumArt = tag?.pictures[0].bytes ?? Uint8List(0);
-    } catch (e) {
-      print(e.toString());
-    }
-    return albumArt;
   }
 
   Future<void> populateFirstSongs(MusicProvider provider) async {
@@ -325,30 +302,37 @@ class MusicSorter {
   }
 
   // Playlists
-  Future<List<String>> getPlaylists() async {
-    List<String> playlists = <String>[];
-    String query = "SELECT $columnName FROM $tablePlaylists";
-    print(query);
+  Future<Map<String, bool>> populatePlaylists() async {
+    Map<String, bool> playlists = {};
+    String query = "SELECT $columnName, $columnIsSorted FROM $tablePlaylists";
     List<Map<String, Object?>> results = await db.customQuery(query, []);
     for (Map<String, Object?> row in results) {
-      playlists.add(row[columnName]!.toString());
+      String name = row[columnName]!.toString();
+      String isSorted = row[columnIsSorted]!.toString();
+      playlists[name] = isSorted == "1";
     }
     return playlists;
   }
 
-  Future<bool> addPlaylist(String name) async {
-    DatabaseHelper db = DatabaseHelper();
+  Future<bool> playlistExists(String name) async {
     String currentPlaylist = await db.easyShortQuery(
         tablePlaylists, columnName, "$columnName = ?", name);
+    return currentPlaylist.isNotEmpty;
+  }
 
-    if (currentPlaylist.isNotEmpty) {
-      return true;
-    } else {
-      Map<String, String> data = {};
-      data[columnName] = name;
-      db.insert(tablePlaylists, data);
+  Future<bool> playlistIsSorted(String name) async {
+    String isSortedString = await db.easyShortQuery(
+        tablePlaylists, columnIsSorted, "$columnName = ?", name);
+    return isSortedString == "1";
+  }
+
+  Future<void> addPlaylist(String name, bool isSorted) async {
+    Map<String, String> data = {};
+    data[columnName] = name;
+    if (isSorted) {
+      data[columnIsSorted] = "1";
     }
-    return false;
+    db.insert(tablePlaylists, data);
   }
 
   Future<void> deletePlaylist(String name) async {
@@ -356,13 +340,16 @@ class MusicSorter {
         "DELETE FROM $tablePlaylistSongs WHERE $columnPlaylistName = ?";
     db.customQuery(deleteFromPlaylistSongsQuery, [name]);
 
+    String deleteFromPlaylistSortQuery =
+        "DELETE FROM $tablePlaylistSort WHERE $columnPlaylistName = ?";
+    db.customQuery(deleteFromPlaylistSortQuery, [name]);
+
     String deleteFromPlaylistsQuery =
         "DELETE FROM $tablePlaylists WHERE $columnName = ?";
     db.customQuery(deleteFromPlaylistsQuery, [name]);
   }
 
   Future<bool> addSongToPlaylist(String name, int id) async {
-    DatabaseHelper db = DatabaseHelper();
     List<String> currentPlaylistSongs = await db.easyQuery(
         tablePlaylistSongs, columnSongId, "$columnPlaylistName = ?", [name]);
 
@@ -377,6 +364,50 @@ class MusicSorter {
       db.insert(tablePlaylistSongs, data);
     }
     return false;
+  }
+
+  Future<void> deleteSongFromPlaylist(String name, int id) async {
+    String deleteFromPlaylistSongsQuery =
+        "DELETE FROM $tablePlaylistSongs WHERE $columnPlaylistName = ? AND $columnSongId = ?";
+    db.customQuery(deleteFromPlaylistSongsQuery, [name, id.toString()]);
+  }
+
+  Future<void> addPlaylistSort(String name, List<String> sortOrder,
+      Map<String, String> searchStrings) async {
+    int sequence = 1;
+    for (String sort in sortOrder) {
+      Map<String, String> data = {};
+      data[columnSequence] = sequence.toString();
+      data[columnPlaylistName] = name;
+      data[columnSortString] = sort;
+      data[columnSearchString] = searchStrings[sort] ?? "";
+
+      db.insert(tablePlaylistSort, data);
+      sequence++;
+    }
+  }
+
+  Future<List<String>> getSortOrderFromPlaylistSort(String name) async {
+    return await db.easyQueryWithSort(tablePlaylistSort, columnSortString,
+        "$columnPlaylistName = ?", [name], columnSequence);
+  }
+
+  Future<Map<String, String>> getSearchStringsFromPlaylistSort(
+      String name) async {
+    Map<String, String> searchStrings = {};
+    List<Map<String, Object?>> results = await db.normalQuery(
+        tablePlaylistSort,
+        [columnSortString, columnSearchString],
+        "$columnPlaylistName = ?",
+        [name],
+        columnSequence);
+
+    for (Map<String, Object?> row in results) {
+      String sortString = row[columnSortString].toString();
+      String searchString = row[columnSearchString].toString();
+      searchStrings[sortString] = searchString;
+    }
+    return searchStrings;
   }
 
   // Search

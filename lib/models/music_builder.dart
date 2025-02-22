@@ -37,9 +37,11 @@ class MusicBuilder {
     this.onProgressUpdate = onProgressUpdate;
   }
 
-  Future<void> rebuildDb() async {
-    print("Attempting rebuild");
-    await db.rebuildDb();
+  Future<void> recreateMusicTables() async {
+    //print("recreateMusicTables:: Attempting recreation of music tables");
+    await db.dropMusicTables();
+    await db.createMusicTables();
+    //print("recreateMusicTables:: Recreation of music tables successful");
   }
 
   Future<void> populateDatabase(List<Song> songs) async {
@@ -48,7 +50,7 @@ class MusicBuilder {
         artistIgnoreText.isNotEmpty;
 
     buildSongsBulk(songs);
-    print("populateDatabase:: Finished populating db");
+    //print("populateDatabase:: Finished populating db");
     musicProvider.addSongs(allSongs);
   }
 
@@ -64,13 +66,11 @@ class MusicBuilder {
       String title = song.title;
       String artist = song.artist;
       String genre = song.genre;
-      print("buildSongsBulk::artistId: $artistId");
 
       if (song.title.isNotEmpty) {
         allSongs[songId] = song;
         Map<String, dynamic> songValues = songToRow(songId, song);
         bulkInsertSongs.add(songValues);
-        songId++;
 
         MusicParser parser =
             MusicParser(artistText: artist, songText: title, genreText: genre);
@@ -105,14 +105,15 @@ class MusicBuilder {
             genreId++;
           }
         }
+        songId++;
 
         //insertAlbum(album, song.albumArtist, song.trackNumber, song.duration);
         //print("Populated song: " + title);
         //print("Populated artist: " + artist);
 
         bulkSize++;
-        print("buildSongsBulk:: bulkSize: $bulkSize");
-        print("buildSongsBulk:: bulkInsertSongs: $bulkInsertSongs");
+        //print("buildSongsBulk:: bulkSize: $bulkSize");
+        //print("buildSongsBulk:: bulkInsertSongs: $bulkInsertSongs");
         if (bulkSize >= bulkInsertSize) {
           bulkSize = 0;
           await bulkInsert();

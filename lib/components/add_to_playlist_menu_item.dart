@@ -40,7 +40,7 @@ class _AddToPlaylistMenuItemContent extends StatelessWidget {
       onTap: () {
         Navigator.pop(context); // Close the menu before opening dialog
 
-        LinkedHashSet<String> playlists = musicProvider.playlists;
+        List<String> playlists = musicProvider.getUnsortedPlaylists();
         showDialog(
           context: context,
           builder: (BuildContext context) {

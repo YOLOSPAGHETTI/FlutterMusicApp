@@ -80,6 +80,9 @@ class SettingsProvider extends ChangeNotifier {
   }
 
   void populateAllSettingsFromDatabase() async {
+    await db.dropSettingsTable();
+    await db.createSettingsTable();
+
     String currentTheme = await getStringSettingFromDatabaseWithDefault(
         settingTheme, settingLightMode);
     if (currentTheme == settingLightMode) {
@@ -213,6 +216,9 @@ class SettingsProvider extends ChangeNotifier {
       List<String> genreDelimiters,
       Map<String, List<String>> songIgnoreText,
       Map<String, List<String>> artistIgnoreText) async {
+    await db.dropConfigSettingsTables();
+    await db.createConfigSettingsTables();
+
     _artistDelimiters.clear();
     _artistDelimiters.addAll(artistDelimiters);
 

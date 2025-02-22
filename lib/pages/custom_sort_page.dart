@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:music_app/components/music_player_controls.dart';
 import 'package:music_app/constants.dart';
+import 'package:music_app/models/error_handler.dart';
 import 'package:music_app/models/music_provider.dart';
 import 'package:music_app/pages/home_page.dart';
 import 'package:provider/provider.dart';
@@ -13,6 +14,7 @@ class CustomSortPage extends StatefulWidget {
 }
 
 class _CustomSortPageState extends State<CustomSortPage> {
+  ErrorHandler errorHandler = ErrorHandler();
   List<String> sortOrder = List<String>.filled(6, "");
   List<TextEditingController> searchControllers =
       List<TextEditingController>.filled(7, TextEditingController());
@@ -21,9 +23,13 @@ class _CustomSortPageState extends State<CustomSortPage> {
   final String yearDuplicateErrorMessage =
       "Cannot have both years and decades in sorting.";
 
-  void goToHomePage(MusicProvider musicProvider) {
+  bool saveAsPlaylist = false;
+  TextEditingController playlistNameController = TextEditingController();
+
+  void goToHomePage(MusicProvider musicProvider) async {
     checkForYearsAndDecades();
     checkForDuplicates();
+    await checkPlaylistName(musicProvider);
 
     if (errorMessage.isEmpty) {
       List<String> tempSortOrder = <String>[];
@@ -42,9 +48,17 @@ class _CustomSortPageState extends State<CustomSortPage> {
       //print("goToHomePage::sortOrder: $sortOrder");
       musicProvider.setSort(tempSortOrder, searchStrings);
 
-      Navigator.push(context, MaterialPageRoute(builder: (context) {
-        return HomePage();
-      }));
+      if (saveAsPlaylist) {
+        String playlistName = playlistNameController.text;
+        await musicProvider.addPlaylist(playlistName, true);
+        await musicProvider.addPlaylistSort(playlistName);
+      }
+
+      if (mounted) {
+        Navigator.push(context, MaterialPageRoute(builder: (context) {
+          return HomePage();
+        }));
+      }
     }
   }
 
@@ -71,20 +85,47 @@ class _CustomSortPageState extends State<CustomSortPage> {
       fieldExists[sortOrder[i]] = i;
     }
     if (duplicateError) {
-      errorMessage = duplicateErrorMessage;
-    } else if (errorMessage == duplicateErrorMessage) {
-      errorMessage = "";
+      errorHandler.addMessage(duplicateErrorMessage);
+    } else {
+      errorHandler.removeMessage(duplicateErrorMessage);
     }
+    setState(() {
+      errorMessage = errorHandler.getErrorMessage();
+    });
   }
 
   void checkForYearsAndDecades() {
     setState(() {
       if (sortOrder.contains(sortYears) && sortOrder.contains(sortDecades)) {
-        errorMessage = yearDuplicateErrorMessage;
-      } else if (errorMessage == yearDuplicateErrorMessage) {
-        errorMessage = "";
+        errorHandler.addMessage(yearDuplicateErrorMessage);
+      } else {
+        errorHandler.removeMessage(yearDuplicateErrorMessage);
       }
+      errorMessage = errorHandler.getErrorMessage();
     });
+  }
+
+  Future<void> checkPlaylistName(MusicProvider musicProvider) async {
+    String name = playlistNameController.text;
+    if (saveAsPlaylist) {
+      if (name.isEmpty) {
+        errorHandler.addMessage(missingPlaylistNameErrorMessage);
+      } else {
+        errorHandler.removeMessage(missingPlaylistNameErrorMessage);
+      }
+      errorMessage = errorHandler.getErrorMessage();
+
+      if (errorMessage.isEmpty) {
+        // Check if playlist name already exists, add it later in the goToHomePage method
+        bool exists = await musicProvider.playlistExists(name);
+        if (exists) {
+          errorHandler.addMessage(duplicatePlaylistNameErrorMessage);
+        } else {
+          errorHandler.removeMessage(duplicatePlaylistNameErrorMessage);
+        }
+        errorMessage = errorHandler.getErrorMessage();
+      }
+    }
   }
 
   @override
@@ -333,13 +374,40 @@ class _CustomSortPageState extends State<CustomSortPage> {
                     // Songs
                     Row(
                       children: [
-                        Text("Songs: "),
+                        Text("Songs:"),
                         const SizedBox(width: 25),
                         Expanded(
                             child: TextField(
                           controller: searchControllers[5],
                         ))
                       ],
+                    ),
+                    const SizedBox(height: 20),
+                    // Save As Playlist
+
+                    CheckboxListTile(
+                      value: saveAsPlaylist,
+                      onChanged: (changed) {
+                        setState(() {
+                          saveAsPlaylist = !saveAsPlaylist;
+                        });
+                      },
+                      title: Text("Save As Playlist"),
+                    ),
+                    const SizedBox(height: 20),
+                    Visibility(
+                      visible: saveAsPlaylist,
+                      child: Row(
+                        children: [
+                          const SizedBox(width: 25),
+                          Text("Playlist Name:"),
+                          const SizedBox(width: 25),
+                          Expanded(
+                              child: TextField(
+                            controller: playlistNameController,
+                          ))
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 25),
                     Visibility(

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:music_app/constants.dart';
+import 'package:music_app/models/error_handler.dart';
 import 'package:music_app/models/music_provider.dart';
 
 class AddPlaylistButton extends StatelessWidget {
@@ -8,6 +10,7 @@ class AddPlaylistButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     TextEditingController addPlaylistController = TextEditingController();
+    ErrorHandler errorHandler = ErrorHandler();
 
     return IconButton(
         onPressed: () {
@@ -25,22 +28,31 @@ class AddPlaylistButton extends StatelessWidget {
                     void addPlaylist() async {
                       if (addPlaylistController.text.isEmpty) {
                         setState(() {
-                          errorMessage = "Please give the playlist a name.";
+                          errorHandler
+                              .addMessage(missingPlaylistNameErrorMessage);
+                          errorMessage = errorHandler.getErrorMessage();
                         });
                         return;
                       }
-                      bool exists = await musicProvider
-                          .addPlaylist(addPlaylistController.text);
+                      String name = addPlaylistController.text;
+                      bool exists = await musicProvider.playlistExists(name);
 
                       if (exists) {
                         setState(() {
-                          errorMessage =
-                              "A playlist with this name already exists.";
+                          errorHandler
+                              .addMessage(duplicatePlaylistNameErrorMessage);
+                          errorMessage = errorHandler.getErrorMessage();
                         });
                         return;
+                      } else {
+                        await musicProvider.addPlaylist(name, false);
                       }
                       setState(() {
-                        errorMessage = "";
+                        errorHandler
+                            .removeMessage(missingPlaylistNameErrorMessage);
+                        errorHandler
+                            .removeMessage(duplicatePlaylistNameErrorMessage);
+                        errorMessage = errorHandler.getErrorMessage();
                       });
                       pop();
                     }

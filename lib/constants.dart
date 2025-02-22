@@ -117,8 +117,14 @@ const String sortDateAdded = "Date Added";
 const String sortFavorites = "Favorites";
 const String sortPlaylists = "Playlists";
 
+// Error Messages
+const String missingPlaylistNameErrorMessage =
+    "Please give the playlist a name.";
+const String duplicatePlaylistNameErrorMessage =
+    "A playlist with this name already exists.";
+
 // DB
-final int bulkInsertSize = 100;
+const int bulkInsertSize = 100;
 
 // Table and column names
 // Songs
@@ -195,7 +201,7 @@ const String columnIgnoreText = 'IgnoreText';
 // Building tables
 const String dropSongs = 'DROP TABLE IF EXISTS $tableSongs;';
 const String buildSongs = '''
-    CREATE TABLE $tableSongs (
+    CREATE TABLE IF NOT EXISTS $tableSongs (
       $columnId INTEGER PRIMARY KEY AUTOINCREMENT,
       $columnTitle TEXT NOT NULL,
       $columnAlbum TEXT NOT NULL,
@@ -213,14 +219,14 @@ const String buildSongs = '''
 
 const String dropArtists = 'DROP TABLE IF EXISTS $tableArtists;';
 const String buildArtists = '''
-    CREATE TABLE $tableArtists (
+    CREATE TABLE IF NOT EXISTS $tableArtists (
       $columnId INTEGER PRIMARY KEY AUTOINCREMENT,
       $columnArtist TEXT NOT NULL
     );''';
 
 const String dropAlbums = 'DROP TABLE IF EXISTS $tableAlbums;';
 const String buildAlbums = '''
-    CREATE TABLE $tableAlbums (
+    CREATE TABLE IF NOT EXISTS $tableAlbums (
       $columnId INTEGER PRIMARY KEY AUTOINCREMENT,
       $columnAlbum TEXT NOT NULL,
       $columnAlbumArtist TEXT NOT NULL,
@@ -230,14 +236,14 @@ const String buildAlbums = '''
 
 const String dropGenres = 'DROP TABLE IF EXISTS $tableGenres;';
 const String buildGenres = '''
-    CREATE TABLE $tableGenres (
+    CREATE TABLE IF NOT EXISTS $tableGenres (
       $columnId INTEGER PRIMARY KEY AUTOINCREMENT,
       $columnGenre TEXT NOT NULL
     );''';
 
 const String dropSongArtists = 'DROP TABLE IF EXISTS $tableSongArtists;';
 const String buildSongArtists = '''
-    CREATE TABLE $tableSongArtists (
+    CREATE TABLE IF NOT EXISTS $tableSongArtists (
       $columnSongId INTEGER NOT NULL,
       $columnArtistId INTEGER NOT NULL,
       FOREIGN KEY ($columnSongId) REFERENCES $tableSongs($columnId),
@@ -246,7 +252,7 @@ const String buildSongArtists = '''
 
 const String dropSongGenres = 'DROP TABLE IF EXISTS $tableSongGenres;';
 const String buildSongGenres = '''
-    CREATE TABLE $tableSongGenres (
+    CREATE TABLE IF NOT EXISTS $tableSongGenres (
       $columnSongId INTEGER NOT NULL,
       $columnGenreId INTEGER NOT NULL,
       FOREIGN KEY ($columnSongId) REFERENCES $tableSongs($columnId),
@@ -255,14 +261,14 @@ const String buildSongGenres = '''
 
 const String dropPlaylists = 'DROP TABLE IF EXISTS $tablePlaylists;';
 const String buildPlaylists = '''
-    CREATE TABLE $tablePlaylists (
+    CREATE TABLE IF NOT EXISTS $tablePlaylists (
       $columnName TEXT PRIMARY KEY,
-      $columnIsSorted BOOLEAN
+      $columnIsSorted INT(1) NOT NULL DEFAULT 0
     );''';
 
 const String dropPlaylistSongs = 'DROP TABLE IF EXISTS $tablePlaylistSongs;';
 const String buildPlaylistSongs = '''
-    CREATE TABLE $tablePlaylistSongs (
+    CREATE TABLE IF NOT EXISTS $tablePlaylistSongs (
       $columnSequence INTEGER NOT NULL,
       $columnPlaylistName TEXT NOT NULL,
       $columnSongId INTEGER NOT NULL,
@@ -272,7 +278,7 @@ const String buildPlaylistSongs = '''
 
 const String dropPlaylistSort = 'DROP TABLE IF EXISTS $tablePlaylistSort;';
 const String buildPlaylistSort = '''
-    CREATE TABLE $tablePlaylistSort (
+    CREATE TABLE IF NOT EXISTS $tablePlaylistSort (
       $columnSequence INTEGER NOT NULL,
       $columnPlaylistName TEXT NOT NULL,
       $columnSortString TEXT NOT NULL,
@@ -282,7 +288,7 @@ const String buildPlaylistSort = '''
 
 const String dropBackupSort = 'DROP TABLE IF EXISTS $tableBackupSort;';
 const String buildBackupSort = '''
-    CREATE TABLE $tableBackupSort (
+    CREATE TABLE IF NOT EXISTS $tableBackupSort (
       $columnSortId INTEGER NOT NULL,
       $columnSequence INTEGER NOT NULL,
       $columnSortString TEXT NOT NULL,
@@ -292,7 +298,7 @@ const String buildBackupSort = '''
 
 const String dropQueue = 'DROP TABLE IF EXISTS $tableQueue;';
 const String buildQueue = '''
-    CREATE TABLE $tableQueue (
+    CREATE TABLE IF NOT EXISTS $tableQueue (
       $columnSequence INTEGER PRIMARY KEY AUTOINCREMENT,
       $columnSongId INTEGER NOT NULL,
       $columnPosition INTEGER NOT NULL,
@@ -301,7 +307,7 @@ const String buildQueue = '''
 
 const String dropSettings = 'DROP TABLE IF EXISTS $tableSettings;';
 const String buildSettings = '''
-    CREATE TABLE $tableSettings (
+    CREATE TABLE IF NOT EXISTS $tableSettings (
       $columnName TEXT NOT NULL,
       $columnSetting TEXT NOT NULL
     );''';
@@ -309,7 +315,7 @@ const String buildSettings = '''
 const String dropSeparateFieldSettings =
     'DROP TABLE IF EXISTS $tableSeparateFieldSettings;';
 const String buildSeparateFieldSettings = '''
-    CREATE TABLE $tableSeparateFieldSettings (
+    CREATE TABLE IF NOT EXISTS $tableSeparateFieldSettings (
       $columnField TEXT NOT NULL,
       $columnDelimiter TEXT NOT NULL
     );''';
@@ -317,7 +323,7 @@ const String buildSeparateFieldSettings = '''
 const String dropFieldContainerSettings =
     'DROP TABLE IF EXISTS $tableFieldContainerSettings;';
 const String buildFieldContainerSettings = '''
-    CREATE TABLE $tableFieldContainerSettings (
+    CREATE TABLE IF NOT EXISTS $tableFieldContainerSettings (
       $columnField TEXT NOT NULL,
       $columnContainer TEXT NOT NULL,
       $columnIgnoreText TEXT NOT NULL

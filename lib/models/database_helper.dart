@@ -33,17 +33,9 @@ class DatabaseHelper {
 
   // Create tables
   Future<void> dropTables() async {
-    final db = await database;
+    final Database db = await database;
 
-    await db.execute(dropSongs);
-    await db.execute(dropArtists);
-    await db.execute(dropAlbums);
-    await db.execute(dropGenres);
-    await db.execute(dropSongArtists);
-    await db.execute(dropSongGenres);
-    await db.execute(dropPlaylists);
-    await db.execute(dropPlaylistSongs);
-    await db.execute(dropPlaylistSort);
+    await dropMusicTables();
     await db.execute(dropBackupSort);
     await db.execute(dropQueue);
     await db.execute(dropSettings);
@@ -54,6 +46,30 @@ class DatabaseHelper {
   Future<void> _onCreate(Database db, int version) async {
     await dropTables();
 
+    await createMusicTables();
+    await db.execute(buildBackupSort);
+    await db.execute(buildQueue);
+    createSettingsTable();
+    createConfigSettingsTables();
+  }
+
+  Future<void> dropMusicTables() async {
+    final Database db = await database;
+
+    await db.execute(dropSongs);
+    await db.execute(dropArtists);
+    await db.execute(dropAlbums);
+    await db.execute(dropGenres);
+    await db.execute(dropSongArtists);
+    await db.execute(dropSongGenres);
+    await db.execute(dropPlaylists);
+    await db.execute(dropPlaylistSongs);
+    await db.execute(dropPlaylistSort);
+  }
+
+  Future<void> createMusicTables() async {
+    final Database db = await database;
+
     await db.execute(buildSongs);
     await db.execute(buildArtists);
     await db.execute(buildAlbums);
@@ -63,15 +79,32 @@ class DatabaseHelper {
     await db.execute(buildPlaylists);
     await db.execute(buildPlaylistSongs);
     await db.execute(buildPlaylistSort);
-    await db.execute(buildBackupSort);
-    await db.execute(buildQueue);
+  }
+
+  Future<void> dropSettingsTable() async {
+    final Database db = await database;
+    await db.execute(dropSettings);
+  }
+
+  Future<void> createSettingsTable() async {
+    final Database db = await database;
     await db.execute(buildSettings);
+  }
+
+  Future<void> dropConfigSettingsTables() async {
+    final Database db = await database;
+    await db.execute(dropSeparateFieldSettings);
+    await db.execute(dropFieldContainerSettings);
+  }
+
+  Future<void> createConfigSettingsTables() async {
+    final Database db = await database;
     await db.execute(buildSeparateFieldSettings);
     await db.execute(buildFieldContainerSettings);
   }
 
   Future<void> rebuildDb() async {
-    final db = await database;
+    final Database db = await database;
 
     print("Rebuilding db");
     await _onCreate(db, 1);
@@ -79,13 +112,13 @@ class DatabaseHelper {
 
   // Insert data
   Future<int> insert(String tableName, Map<String, dynamic> data) async {
-    final db = await database;
+    final Database db = await database;
     return await db.insert(tableName, data);
   }
 
   Future<List<Object?>> bulkInsert(
       String tableName, List<Map<String, dynamic>> data) async {
-    final db = await database;
+    final Database db = await database;
 
     // Start a batch transaction
     Batch batch = db.batch();
@@ -99,7 +132,7 @@ class DatabaseHelper {
 
   Future<void> bulkInsertNoResult(
       String tableName, List<Map<String, dynamic>> data) async {
-    final db = await database;
+    final Database db = await database;
 
     // Start a batch transaction
     Batch batch = db.batch();
@@ -115,13 +148,13 @@ class DatabaseHelper {
 
   // Query all items
   Future<List<Map<String, dynamic>>> getAllItems(String tableName) async {
-    final db = await database;
+    final Database db = await database;
     return await db.query(tableName);
   }
 
   // Query a specific item by ID
   Future<Map<String, dynamic>?> getItemById(String tableName, int id) async {
-    final db = await database;
+    final Database db = await database;
     final results = await db.query(
       tableName,
       where: '$columnId = ?',
@@ -131,7 +164,7 @@ class DatabaseHelper {
   }
 
   Future<int> getNextId(String tableName) async {
-    final db = await database;
+    final Database db = await database;
     int nextId = 1;
     List<Map<String, Object?>> results =
         await db.query(tableName, columns: ["MAX($columnId)+1 AS $columnId"]);
@@ -159,7 +192,7 @@ class DatabaseHelper {
   // Runs query to grab one column
   Future<List<String>> easyQuery(
       String table, String column, String where, List<String> whereArgs) async {
-    final db = await database;
+    final Database db = await database;
     List<String> columns = [column];
 
     List<Map<String, Object?>> results = await db.query(table,
@@ -176,22 +209,22 @@ class DatabaseHelper {
   }
 
   // Runs query to grab one column
-  Future<List<String>> easyQueryWithSort(String table, String projection,
-      String selection, List<String> selectionArgs, String sortOrder) async {
-    final db = await database;
-    List<String> columns = [projection];
+  Future<List<String>> easyQueryWithSort(String table, String column,
+      String selection, List<String> selectionArgs, String orderBy) async {
+    final Database db = await database;
+    List<String> columns = [column];
 
     List<Map<String, Object?>> results = await db.query(table,
         columns: columns,
         where: selection,
         whereArgs: selectionArgs,
-        orderBy: sortOrder);
+        orderBy: orderBy);
 
     List<String> items = <String>[];
     Iterator iterator = results.iterator;
     while (iterator.moveNext()) {
-      Map<String, String> row = iterator.current;
-      items.add(row[projection]!);
+      Map<String, Object?> row = iterator.current;
+      items.add(row[column]!.toString());
     }
 
     return items;
@@ -200,17 +233,14 @@ class DatabaseHelper {
   // Runs query to grab all columns
   Future<List<Map<String, Object?>>> normalQuery(
       String table,
-      List<String> projection,
-      String selection,
-      List<String> selectionArgs,
-      String sortOrder) async {
-    final db = await database;
+      List<String> columns,
+      String where,
+      List<String> whereArgs,
+      String orderBy) async {
+    final Database db = await database;
 
     List<Map<String, Object?>> results = await db.query(table,
-        columns: projection,
-        where: selection,
-        whereArgs: selectionArgs,
-        orderBy: sortOrder);
+        columns: columns, where: where, whereArgs: whereArgs, orderBy: orderBy);
 
     return results;
   }
@@ -218,7 +248,7 @@ class DatabaseHelper {
   // Runs query to grab all columns
   Future<List<Map<String, Object?>>> customQuery(
       String query, List<String> selectionArgs) async {
-    final db = await database;
+    final Database db = await database;
 
     List<Map<String, Object?>> results =
         await db.rawQuery(query, selectionArgs);
@@ -229,7 +259,7 @@ class DatabaseHelper {
   // Update an item
   Future<int> update(
       String tableName, int id, Map<String, dynamic> data) async {
-    final db = await database;
+    final Database db = await database;
     return await db.update(
       tableName,
       data,
@@ -239,7 +269,7 @@ class DatabaseHelper {
   }
 
   Future<int> updateSetting(String name, Map<String, dynamic> data) async {
-    final db = await database;
+    final Database db = await database;
     return await db.update(
       tableSettings,
       data,
@@ -250,7 +280,7 @@ class DatabaseHelper {
 
   // Delete an item
   Future<void> delete(String tableName, int id) async {
-    final db = await database;
+    final Database db = await database;
 
     await db.delete(
       tableName,
@@ -261,14 +291,12 @@ class DatabaseHelper {
 
   // Close the database
   Future<void> close() async {
-    final db = _database;
-    if (db != null) {
-      await db.close();
-    }
+    final Database db = await database;
+    await db.close();
   }
 
   Future<bool> isDatabasePopulated() async {
-    final db = await database;
+    final Database db = await database;
     List<Map<String, Object?>> result = <Map<String, Object?>>[];
     result = await db.rawQuery(
       '''

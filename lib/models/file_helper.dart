@@ -1,9 +1,9 @@
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:audiotags/audiotags.dart';
 import 'package:music_app/constants.dart';
+import 'package:music_app/models/music_provider.dart';
 import 'package:music_app/models/song.dart';
 
 class FileHelper {
@@ -127,6 +127,28 @@ class FileHelper {
       print(e.toString());
     }
     print("updateFileTags:: completed");
+  }
+
+  Future<void> loadAlbumArt(MusicProvider provider) async {
+    Map<int, Song> songs = provider.allSongs;
+    Iterator<Song> iterator = songs.values.iterator;
+
+    while (iterator.moveNext()) {
+      Song song = iterator.current;
+      Uint8List albumArt = await getAlbumArt(File(song.source));
+      provider.setAlbumArtForSong(song.id, albumArt);
+    }
+  }
+
+  Future<Uint8List> getAlbumArt(File file) async {
+    Uint8List albumArt = Uint8List(0);
+    try {
+      Tag? tag = await AudioTags.read(file.path);
+      albumArt = tag?.pictures[0].bytes ?? Uint8List(0);
+    } catch (e) {
+      print(e.toString());
+    }
+    return albumArt;
   }
 
   Future<void> _searchFiles(Directory dir, List<File> musicFiles) async {

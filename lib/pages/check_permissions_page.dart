@@ -113,6 +113,7 @@ class _CheckPermissionsPageState extends State<CheckPermissionsPage> {
                     TextStyle(color: Theme.of(context).colorScheme.secondary),
               ),
             ),
+            SizedBox(height: 20),
             Visibility(
               visible: showText,
               child: const Text(
